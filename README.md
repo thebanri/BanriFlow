@@ -88,6 +88,16 @@ banri serve -d
 ```
 *(Note: An AI provider MUST be configured via `banri set` before launching the GUI).*
 
+**Troubleshooting: "Kritik Hata: Kubernetes Bağlantısı Başarısız"**
+If you are running BanriFlow on a Raspberry Pi or a machine using **K3s** and you see a Kubernetes connection error in the UI (or CLI), it means the application cannot find your `~/.kube/config` file. K3s stores this securely by default. To fix this, run:
+
+```bash
+mkdir -p ~/.kube
+sudo k3s kubectl config view --raw > ~/.kube/config
+chmod 600 ~/.kube/config
+```
+Then restart `banri serve`.
+
 ## 🧠 Behind the Scenes: SOTA LLM Optimization
 BanriFlow is built with state-of-the-art prompt engineering and API optimizations to guarantee zero hallucination:
 - **Chain of Thought (CoT):** Enforces a hidden `thought_process` mechanism, forcing the AI to reason logically before returning results.
