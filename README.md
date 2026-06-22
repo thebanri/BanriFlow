@@ -64,6 +64,20 @@ Run the tool using local static rules (without an AI provider). *(Note: Static r
 banri scan ./my-infrastructure-dir --manual
 ```
 
+### 7. 3D Topology Dashboard & Live API Server
+Launch an embedded, stunning 3D Graphical User Interface (GUI) in your browser that visualizes your live Kubernetes cluster topology.
+```bash
+banri serve
+```
+Then open `http://localhost:3005` to interact with the 3D topology map and view AI-generated architectural analysis.
+
+**Run in Background (Daemon Mode):**
+If you don't want to hang your terminal, run it in the background:
+```bash
+banri serve -d
+```
+*(Note: An AI provider MUST be configured via `banri set` before launching the GUI).*
+
 ## 🧠 Behind the Scenes: SOTA LLM Optimization
 BanriFlow is built with state-of-the-art prompt engineering and API optimizations to guarantee zero hallucination:
 - **Chain of Thought (CoT):** Enforces a hidden `thought_process` mechanism, forcing the AI to reason logically before returning results.
