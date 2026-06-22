@@ -1,0 +1,14 @@
+# Binaries
+BanriFlow
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Environments
+.env
+.banriflow.env
