@@ -210,6 +210,11 @@ const htmlContent = `<!DOCTYPE html>
     function closePanel() { panel.classList.remove('open'); }
 
     fetch('/api/topology').then(res => res.json()).then(data => {
+      if (data.error) {
+         document.getElementById('graph').innerHTML = '<div style="display:flex; justify-content:center; align-items:center; height:100vh; flex-direction:column;"><h2 style="color:#ef4444; margin-bottom: 8px;">Kritik Hata: Kubernetes Bağlantısı Başarısız</h2><p style="color:#cbd5e1; max-width: 600px; text-align:center;">' + data.error + '</p><p style="color:#94a3b8; font-size:14px; margin-top:24px;">Lütfen sunucudaki ~/.kube/config dosyasının geçerli olduğundan emin olun.</p></div>';
+         return;
+      }
+      
       const Graph = ForceGraph3D()
         (document.getElementById('graph'))
         .graphData(data)
@@ -266,7 +271,7 @@ const htmlContent = `<!DOCTYPE html>
           panel.classList.add('open');
         });
     }).catch(err => {
-      document.body.innerHTML = '<h2 style="padding:40px; text-align:center;">Cluster bağlantısı başarısız oldu. API arka planda çalışıyor mu? Hata: ' + err + '</h2>';
+      document.getElementById('graph').innerHTML = '<div style="display:flex; justify-content:center; align-items:center; height:100vh;"><h2 style="padding:40px; text-align:center; color:#ef4444;">Cluster bağlantısı başarısız oldu. API arka planda çalışıyor mu? Hata: ' + err + '</h2></div>';
     });
   </script>
 </body>
