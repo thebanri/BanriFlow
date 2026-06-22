@@ -11,8 +11,18 @@
 
 ## 📦 Installation
 
-Ensure you have Go installed, then clone, build, and install the CLI tool globally:
+The easiest way to install BanriFlow is using our one-line installer (requires Go to be installed):
 
+```bash
+curl -sSL https://raw.githubusercontent.com/thebanri/BanriFlow/main/install.sh | bash
+```
+
+**To Uninstall:**
+```bash
+curl -sSL https://raw.githubusercontent.com/thebanri/BanriFlow/main/uninstall.sh | bash
+```
+
+Alternatively, you can build from source manually:
 ```bash
 git clone https://github.com/thebanri/BanriFlow.git
 cd BanriFlow
