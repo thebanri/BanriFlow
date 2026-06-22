@@ -38,3 +38,8 @@ func AnalyzeTopology(ctx context.Context, filePaths []string, manualMode bool, p
 	}
 	return RunTopologyAnalysis(ctx, filePaths, provider, customInstruction)
 }
+
+// AnalyzeLiveTopology analyzes the live scraped state of a Kubernetes cluster
+func AnalyzeLiveTopology(ctx context.Context, liveState string, provider string, customInstruction string) (*Result, error) {
+	return RunAnalyzeLiveTopology(ctx, liveState, provider, customInstruction)
+}

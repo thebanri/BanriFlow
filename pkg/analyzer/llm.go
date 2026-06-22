@@ -200,3 +200,72 @@ JSON format:
 		Issues: issues,
 	}, nil
 }
+
+func RunAnalyzeLiveTopology(ctx context.Context, liveState string, provider string, customInstruction string) (*Result, error) {
+	llm, err := getLLM(ctx, provider)
+	if err != nil {
+		return nil, err
+	}
+
+	topologyPrompt := `You are an Elite Cloud Architect, Principal DevOps Engineer, and Senior Cybersecurity Auditor.
+Your task is to conduct a massive, comprehensive analysis of the ENTIRE LIVE KUBERNETES CLUSTER.
+These configurations were scraped directly from the running cluster.
+
+You MUST analyze the architecture as a WHOLE and identify ANY missing components, security flaws, cost inefficiencies, or architectural anti-patterns.
+Checklist for your analysis:
+1. **Kubernetes Architecture**: Are live pods running as root? Are resource requests/limits missing in the active deployments? Are liveness/readiness probes missing?
+2. **Cross-Service Topology & Network**: Can unintended services communicate? Are NetworkPolicies strictly isolating databases? Are there missing NetworkPolicies?
+3. **Resiliency & High Availability**: Are there single points of failure? Are replicas set to 1 for critical services?
+4. **Secrets Management**: Are secrets hardcoded anywhere?
+5. **Language Adaptability**: Respond in the EXACT language used in the User Custom Instruction. If the user asks in Turkish, write your message and recommendation in Turkish. If no custom instruction is provided, default to English. The JSON keys MUST remain in English.
+
+CRITICAL INSTRUCTION: You MUST think step-by-step. Fill the "thought_process" field with your detailed reasoning BEFORE providing the final severity, type, message, and recommendation. This dramatically improves accuracy.
+
+Provide a deep, holistic audit of ALL missing or flawed configurations in the live cluster.
+ONLY report issues you are absolutely sure about based on the provided aggregate code.
+Respond ONLY with a valid JSON array of objects. Do not include markdown formatting like "\x60\x60\x60json".
+
+JSON format:
+[
+  {
+    "thought_process": "Your step-by-step reasoning...",
+    "severity": "Critical|High|Medium|Low|Info",
+    "type": "security|cost|network|architecture|availability",
+    "message": "Deep architectural or specific issue description (in the user's language)",
+    "recommendation": "Exact fix or missing component to add (in the user's language)"
+  }
+]
+`
+
+	instructionBlock := ""
+	if customInstruction != "" {
+		instructionBlock = fmt.Sprintf("\nUser Custom Instruction: \"%s\"\n(IMPORTANT: Evaluate based on this instruction and respond in the same language.)\n", customInstruction)
+	}
+
+	prompt := fmt.Sprintf("%s\n%s\nLIVE CLUSTER STATE:\n%s\n", topologyPrompt, instructionBlock, liveState)
+
+	completion, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt,
+		llms.WithTemperature(0.1),
+		llms.WithTopP(0.7),
+		llms.WithMaxTokens(8192),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("AI generation failed: %w", err)
+	}
+
+	var issues []Issue
+	cleanJson := strings.TrimPrefix(completion, "```json")
+	cleanJson = strings.TrimPrefix(cleanJson, "```")
+	cleanJson = strings.TrimSuffix(cleanJson, "```")
+	cleanJson = strings.TrimSpace(cleanJson)
+
+	err = json.Unmarshal([]byte(cleanJson), &issues)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse AI response as JSON: %w\nResponse was: %s", err, completion)
+	}
+
+	return &Result{
+		File:   "Live Cluster Topology",
+		Issues: issues,
+	}, nil
+}

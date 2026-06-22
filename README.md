@@ -11,12 +11,13 @@
 
 ## 📦 Installation
 
-Ensure you have Go installed, then clone and build the CLI tool:
+Ensure you have Go installed, then clone, build, and install the CLI tool globally:
 
 ```bash
 git clone https://github.com/thebanri/BanriFlow.git
 cd BanriFlow
-go build -o BanriFlow
+go build -o banri
+sudo mv banri /usr/local/bin/
 ```
 
 ## 🛠️ Usage
@@ -24,35 +25,43 @@ go build -o BanriFlow
 ### 1. Configuration (Setup Wizard)
 Configure your AI provider and API keys interactively. This securely saves your preferences to `~/.banriflow.env`.
 ```bash
-./BanriFlow set
+banri set
 ```
 
 ### 2. Standard Security Scan
 Scan a directory for Kubernetes and Terraform files. The AI will analyze each file individually.
 ```bash
-./BanriFlow scan ./my-infrastructure-dir
+banri scan ./my-infrastructure-dir
 ```
 
 ### 3. Holistic Topology Analysis (Cross-Container)
 Analyze the entire architecture as a **whole**. This checks if your `frontend` can securely communicate with your `backend`, verifies NetworkPolicies, and audits AWS VPC/IAM structures.
 ```bash
-./BanriFlow scan ./my-infrastructure-dir --topology
+banri scan ./my-infrastructure-dir --topology
 # or
-./BanriFlow scan ./my-infrastructure-dir -t
+banri scan ./my-infrastructure-dir -t
 ```
 
 ### 4. Custom Instructions & Language Adaptability
 Give the AI specific tasks or ask it to focus on a particular issue. If you write your instruction in Turkish, Spanish, etc., the AI will adapt and output the analysis in that language.
 ```bash
-./BanriFlow scan ./my-infrastructure-dir --ask "Focus ONLY on IAM roles and Kubernetes RBAC permissions."
+banri scan ./my-infrastructure-dir --ask "Focus ONLY on IAM roles and Kubernetes RBAC permissions."
 # or
-./BanriFlow scan ./my-infrastructure-dir -t -a "Bütün veritabanı açıklarını bul ve bana detaylı anlat."
+banri scan ./my-infrastructure-dir -t -a "Bütün veritabanı açıklarını bul ve bana detaylı anlat."
 ```
 
-### 5. Manual (Static) Mode
+### 5. Live Cluster Analysis (Real-Time)
+Connects directly to your active Kubernetes cluster (`~/.kube/config`) and performs a massive live audit of all running Deployments, Services, and NetworkPolicies!
+```bash
+banri live
+# or with custom instruction:
+banri live -a "Find all pods missing resource limits and explain in Turkish"
+```
+
+### 6. Manual (Static) Mode
 Run the tool using local static rules (without an AI provider). *(Note: Static rules are currently placeholders and are meant to be expanded).*
 ```bash
-./BanriFlow scan ./my-infrastructure-dir --manual
+banri scan ./my-infrastructure-dir --manual
 ```
 
 ## 🧠 Behind the Scenes: SOTA LLM Optimization

@@ -10,10 +10,9 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "banriflow",
-	Short: "BanriFlow analyzes Kubernetes and Terraform files for security and cost optimizations",
-	Long: `BanriFlow is an AI-powered security and cost optimization tool.
-It scans Kubernetes (.yaml/.yml) and Terraform (.tf) files.`,
+	Use:   "banri",
+	Short: "BanriFlow: AI-Powered Cloud Security Posture Management",
+	Long:  `BanriFlow is an elite CLI tool to analyze Kubernetes and Terraform files for security flaws, cost optimization, and topological analysis.`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
