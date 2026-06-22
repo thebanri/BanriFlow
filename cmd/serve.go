@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -61,6 +62,9 @@ var serveCmd = &cobra.Command{
 			}
 			
 			child := exec.Command(executable, childArgs...)
+			// Terminal kapansa bile arkaplanda çalışmaya devam etmesi için oturumdan ayır (detach):
+			child.SysProcAttr = &syscall.SysProcAttr{Setsid: true} 
+			
 			err = child.Start()
 			if err != nil {
 				log.Fatalf("Arkaplan işlemi başlatılamadı: %v", err)
@@ -90,9 +94,10 @@ var serveCmd = &cobra.Command{
 			return c.SendString(htmlContent)
 		})
 
-		fmt.Println("🚀 BanriFlow 3D GUI Başladı! Görüntülemek için: http://localhost:3005")
+		fmt.Println("🚀 BanriFlow 3D GUI Başladı! Görüntülemek için: http://0.0.0.0:3005")
 		fmt.Println("🐛 Debug logları aktif. Gelen bağlantılar aşağıda listelenecek...")
-		log.Fatal(app.Listen(":3005"))
+		// Explicitly bind to 0.0.0.0 so it is accessible over the network (LAN)
+		log.Fatal(app.Listen("0.0.0.0:3005"))
 	},
 }
 
