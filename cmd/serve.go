@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -65,11 +66,21 @@ var serveCmd = &cobra.Command{
 			// Terminal kapansa bile arkaplanda çalışmaya devam etmesi için oturumdan ayır (detach):
 			child.SysProcAttr = &syscall.SysProcAttr{Setsid: true} 
 			
+			// Arkaplan süreci stdout/stderr kapatılınca çökebilir. Logları dosyaya yönlendirelim:
+			homeDir, _ := os.UserHomeDir()
+			logPath := filepath.Join(homeDir, ".banriflow.log")
+			logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+			if err == nil {
+				child.Stdout = logFile
+				child.Stderr = logFile
+			}
+			
 			err = child.Start()
 			if err != nil {
 				log.Fatalf("Arkaplan işlemi başlatılamadı: %v", err)
 			}
-			fmt.Println("✅ BanriFlow arkaplanda başladı! Görüntülemek için: http://localhost:3005")
+			fmt.Printf("✅ BanriFlow arkaplanda başladı! Görüntülemek için: http://0.0.0.0:3005\n")
+			fmt.Printf("📜 Hata analizi ve logları okumak için terminalde şunu çalıştır:\n   tail -f %s\n", logPath)
 			os.Exit(0)
 		}
 
