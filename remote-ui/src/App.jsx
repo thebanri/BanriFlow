@@ -12,6 +12,7 @@ function App() {
   const [selectedNode, setSelectedNode] = useState(null);
   const [isRightMenuOpen, setIsRightMenuOpen] = useState(false);
   const [logs, setLogs] = useState([]);
+  const [solveData, setSolveData] = useState(null);
 
   useEffect(() => {
     // Fetch static topology directly from the Go API server on port 3005
@@ -90,11 +91,11 @@ function App() {
       <RightMenu isOpen={isRightMenuOpen} onClose={() => setIsRightMenuOpen(false)} selectedNode={selectedNode} />
 
       {/* AI Chat Panel & Bubble */}
-      <AIChatPanel logs={logs} />
+      <AIChatPanel activeIncident={solveData} onClose={() => setSolveData(null)} />
 
       {/* Bottom Log Terminal */}
       <div className="absolute bottom-6 left-6 right-6 z-10">
-        <LogTerminal logs={logs} />
+        <LogTerminal logs={logs} onSolve={(ns, pod, err) => setSolveData({ ns, pod, err })} />
       </div>
     </div>
   );

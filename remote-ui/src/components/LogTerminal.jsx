@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TerminalSquare, Lightbulb } from 'lucide-react';
 
-export default function LogTerminal({ logs }) {
+export default function LogTerminal({ logs, onSolve }) {
   const [height, setHeight] = useState(192); // Default tailwind h-48 = 192px
   const isDragging = useRef(false);
   const logEndRef = useRef(null);
@@ -85,6 +85,20 @@ export default function LogTerminal({ logs }) {
                 `}>
                   {log.text}
                 </span>
+
+                {isAI && (
+                  <button 
+                    onClick={() => {
+                      const match = log.text.match(/\(([^/]+)\/([^)]+)\): (.*)/);
+                      if (match && onSolve) {
+                        onSolve(match[1], match[2], match[3]);
+                      }
+                    }}
+                    className="ml-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-3 py-0.5 rounded flex items-center gap-1.5 text-xs font-bold border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.3)] active:scale-95"
+                  >
+                    <Lightbulb size={14} /> ÇÖZÜMÜ UYGULA
+                  </button>
+                )}
               </div>
             );
           })}

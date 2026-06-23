@@ -77,6 +77,23 @@ Sadece kesin emin olduğun ve hatasız çalışacak bir BASH komutu üret.`, nam
 		if len(out) > 0 {
 			sendMsg(fmt.Sprintf("Çıktı: %s", string(out)))
 		}
+
+		sendMsg("⏳ Değişikliklerin etki etmesi bekleniyor (5 saniye)...")
+		time.Sleep(5 * time.Second)
+		sendMsg("🔍 Durum doğrulanıyor...")
+
+		checkCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", pod, "-n", namespace, "-o", "jsonpath={.status.phase}")
+		statusOut, checkErr := checkCmd.CombinedOutput()
+		status := strings.TrimSpace(string(statusOut))
+
+		if checkErr == nil && (status == "Running" || status == "Succeeded") {
+			sendMsg("🎉 DOĞRULANDI: Sorun çözüldü! Pod durumu: " + status)
+			sendMsg("[SOLVED]")
+		} else if checkErr == nil {
+			sendMsg("⚠️ KISMİ BAŞARI: Komut çalıştı ancak Pod henüz tam iyileşmedi. Mevcut durum: " + status)
+		} else {
+			sendMsg("⚠️ DOĞRULAMA BAŞARISIZ: Pod durumu alınamadı (belki yeniden oluşturuluyor veya silindi).")
+		}
 	}
 	
 	sendMsg("🏁 Süreç tamamlandı.")
