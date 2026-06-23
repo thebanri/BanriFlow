@@ -52,43 +52,45 @@ func AutoFixStream(ctx context.Context, provider, namespace, pod, errMsg, userIn
 		return
 	}
 
-	prompt := fmt.Sprintf(`Sen bir Kubernetes otomatik onarım asistanısın.
-Aşağıdaki hatayı çözmek için ÇALIŞTIRILACAK TEK BİR BASH/KUBECTL KOMUTU üret.
-SADECE KOMUTU YAZ! (Markdown backtick kullanma, sadece saf komut)
+	prompt := fmt.Sprintf(`You are a Kubernetes Automated Repair Assistant.
+Your task is to produce EXACTLY ONE BASH/KUBECTL COMMAND to fix the given Kubernetes error.
+OUTPUT ONLY THE COMMAND. Do not use markdown backticks, explanations, or any other text. JUST the raw command.
 
-ÇOK ÖNEMLİ KURALLAR:
-1. KESİNLİKLE "<" veya ">" gibi Bash yönlendirme operatörlerini (yer tutucu olarak bile olsa) KULLANMA! (Örn: <KULLANICI_ADI> YAZMA, yerine dummy-user yaz).
-2. Tırnak işaretlerini (", ') doğru ve güvenli kullan.
-3. KUBERNETES KURALI: Çalışan bir Pod üzerinde 'kubectl patch pod' veya 'kubectl edit pod' KESİNLİKLE KULLANMA! Bir pod'un 'image' özelliği dışındaki hiçbir alanını (command, resources, env) doğrudan değiştiremezsin (Forbidden hatası verir). Değişiklik yapmak istiyorsan her zaman o Pod'u yöneten DEPLOYMENT'i yamala (patch/set).
-   - YANLIŞ: kubectl patch pod ornek-pod-1234 -p ...
-   - DOĞRU: kubectl patch deployment ornek -p ... (Deployment adı genellikle Pod adından sondaki 2 hash silinerek bulunur, örn: pod "crash-app-123-456" ise deployment adı "crash-app"tir).
-4. ÇÖZÜLEMEYEN VEYA EMİN OLUNAMAYAN SORUNLAR: Eğer sorunu tek bir YAML/patch komutuyla kesin olarak ÇÖZEMEYECEKSEN (örneğin loglara bakman gerekiyorsa veya CrashLoopBackOff/ImagePullBackOff'un tam nedenini bilmiyorsan), kubectl komutları ÇALIŞTIRMA! Bunun yerine kullanıcıya ne yapması gerektiğini söyleyen bir "echo" komutu üret. ASLA 'kubectl logs' veya 'kubectl describe' gibi sadece okuma yapan komutlar üretme, sadece kalıcı olarak çözen komutlar üret veya 'echo' ile tavsiye ver.
-5. NAMESPACE ZORUNLULUĞU: Ürettiğin HİÇBİR kubectl komutunda namespace'i unutma! Her komutun sonuna kesinlikle '-n <Namespace>' ekle. (Eğer echo kullanmıyorsan).
-6. CONTAINER ADI BİLİNMİYORSA: Eger "kubectl set image" komutu kullanacaksan ve container adını bilmiyorsan, container adı yerine "*" kullanarak tüm container'ları hedefle. (Örn: kubectl set image deployment/ornek-uyg *=yeni-imaj:latest -n namespace)
-7. RESOURCE LİMİT GÜNCELLEMESİ: Eğer CPU veya Memory request/limit değerlerini güncelleyeceksen KESİNLİKLE 'kubectl patch' KULLANMA (çünkü container adını bilmiyorsun ve hata verir). Bunun yerine TERCİHEN 'kubectl set resources' kullan. Örn: kubectl set resources deployment/ornek --requests=memory=256Mi -n namespace
+CRITICAL RULES:
+1. NEVER use bash redirection operators like "<" or ">" (even as placeholders). Use dummy values if needed (e.g. dummy-user instead of <USER>).
+2. NEVER use 'kubectl patch pod' or 'kubectl edit pod' on a running Pod! You cannot modify anything other than the 'image' on a live pod. To change commands, resources, or env vars, YOU MUST PATCH THE PARENT DEPLOYMENT.
+   - WRONG: kubectl patch pod my-pod-1234 -p ...
+   - CORRECT: kubectl patch deployment my-deployment -p ... (You can usually find the deployment name by stripping the last two hash suffixes from the pod name).
+3. UNSOLVABLE OR UNKNOWN ISSUES: If you are NOT 100%% sure how to fix the issue with a single patch/set command, DO NOT try to guess. Instead, output an 'echo' command advising the user what to check. 
+   - NEVER output read-only commands like 'kubectl logs' or 'kubectl describe' as your final command!
+   - ONLY output permanent fix commands (patch, set, apply) OR an 'echo' command with advice.
+4. NAMESPACE REQUIREMENT: You MUST append '-n <Namespace>' to every kubectl command you generate.
+5. CONTAINER NAME UNKNOWN: If you use 'kubectl set image' but don't know the exact container name, use '*' to target all containers. (e.g., kubectl set image deployment/app *=nginx:latest -n ns)
+6. RESOURCE UPDATES: If you need to update CPU/Memory limits or requests, DO NOT use 'kubectl patch' because you might not know the exact container name, which will cause an error. Instead, ALWAYS use 'kubectl set resources'. (e.g., kubectl set resources deployment/app --requests=memory=256Mi -n ns)
 
 Namespace: %s
 Pod: %s
-Hata: %s`, namespace, actualPod, errMsg)
+Error: %s`, namespace, actualPod, errMsg)
 
 	// Try to fetch last 20 lines of logs to give AI more context
-	logCmd := exec.CommandContext(ctx, "kubectl", "logs", actualPod, "-n", namespace, "--all-containers", "--tail=20")
+	// We check both current and previous (crashed) container logs
+	logCmd := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf("kubectl logs %s -n %s --all-containers --tail=20 || kubectl logs %s -n %s --all-containers --tail=20 --previous", actualPod, namespace, actualPod, namespace))
 	logOut, _ := logCmd.CombinedOutput()
 	logStr := strings.TrimSpace(string(logOut))
 	if len(logStr) > 0 {
-		prompt += "\n\nÖNEMLİ NOT: Kullanıcı senden loglara bakmanı isterse veya CrashLoopBackOff gibi log gerektiren bir hata varsa KESİNLİKLE 'ben log okuyamam' DEME! Çünkü Pod'un logları arka planda otomatik olarak çekilip aşağıya EKLENMİŞTİR! Bu logları okuyarak (örneğin hatalı komutu veya eksik argümanı bularak) doğrudan bir 'kubectl patch deployment' çözüm komutu üretebilirsin."
+		prompt += "\n\nCRITICAL NOTE: The user might ask you to 'check logs' or the error might be CrashLoopBackOff. DO NOT reply saying 'I cannot read logs'! The recent logs have already been automatically fetched and are ATTACHED BELOW! READ THE LOGS BELOW to find the root cause (e.g. a typo in a sleep command), and directly output a 'kubectl patch deployment' command to fix it!"
 		if len(logStr) < 2000 {
-			prompt += fmt.Sprintf("\n\n--- POD LOGLARI (Son 20 Satır) ---\n%s\n---------------------------------", logStr)
+			prompt += fmt.Sprintf("\n\n--- INJECTED POD LOGS (Last 20 Lines) ---\n%s\n---------------------------------", logStr)
 		} else {
-			prompt += fmt.Sprintf("\n\n--- POD LOGLARI (Son 20 Satır) ---\n%s\n---------------------------------", logStr[:2000]+" ...[TRUNCATED]")
+			prompt += fmt.Sprintf("\n\n--- INJECTED POD LOGS (Last 20 Lines) ---\n%s\n---------------------------------", logStr[:2000]+" ...[TRUNCATED]")
 		}
 	}
 
 	if userInput != "" {
-		prompt += fmt.Sprintf("\n\nÖZEL KULLANICI TALİMATI: %s\nYukarıdaki hatayı çözerken bu kullanıcının verdiği kesin talimatı HARFİYEN uygula! Kullanıcı bir imaj adı verirse Deployment veya ReplicaSet'i set image ile doğrudan değiştir.", userInput)
+		prompt += fmt.Sprintf("\n\nEXPLICIT USER INSTRUCTION: %s\nYou MUST STRICTLY obey this user instruction! If they provide a solution or image name, use it directly without hesitation.", userInput)
 	}
 
-	prompt += "\n\nSadece kesin emin olduğun ve hatasız çalışacak bir BASH komutu üret."
+	prompt += "\n\nOutput ONLY the valid, safe bash command to execute."
 
 	completion, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt, llms.WithTemperature(0.1))
 	if err != nil {
