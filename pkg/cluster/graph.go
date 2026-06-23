@@ -14,6 +14,7 @@ import (
 type GraphNode struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
+	Namespace   string `json:"namespace"`
 	Group       string `json:"group"` // "pod", "service", "deployment"
 	Status      string `json:"status"` // "ok", "error" (for red nodes)
 	IP          string `json:"ip"`
@@ -80,15 +81,16 @@ func FetchGraphData(ctx context.Context) (*GraphData, error) {
 		}
 
 		data.Nodes = append(data.Nodes, GraphNode{
-			ID:       string(p.UID),
-			Name:     p.Name,
-			Group:    "pod",
-			Status:   status,
-			IP:       p.Status.PodIP,
-			Restarts: restarts,
-			CPU:      cpu,
-			Memory:   mem,
-			Details:  fmt.Sprintf("Namespace: %s\nPhase: %s", p.Namespace, p.Status.Phase),
+			ID:        string(p.UID),
+			Name:      p.Name,
+			Namespace: p.Namespace,
+			Group:     "pod",
+			Status:    status,
+			IP:        p.Status.PodIP,
+			Restarts:  restarts,
+			CPU:       cpu,
+			Memory:    mem,
+			Details:   fmt.Sprintf("Phase: %s", p.Status.Phase),
 		})
 	}
 
@@ -96,12 +98,13 @@ func FetchGraphData(ctx context.Context) (*GraphData, error) {
 	svcs, _ := clientset.CoreV1().Services("").List(ctx, metav1.ListOptions{})
 	for _, s := range svcs.Items {
 		data.Nodes = append(data.Nodes, GraphNode{
-			ID:      string(s.UID),
-			Name:    s.Name,
-			Group:   "service",
-			Status:  "ok",
-			IP:      s.Spec.ClusterIP,
-			Details: fmt.Sprintf("Type: %s", s.Spec.Type),
+			ID:        string(s.UID),
+			Name:      s.Name,
+			Namespace: s.Namespace,
+			Group:     "service",
+			Status:    "ok",
+			IP:        s.Spec.ClusterIP,
+			Details:   fmt.Sprintf("Type: %s", s.Spec.Type),
 		})
 
 		for _, p := range pods.Items {
