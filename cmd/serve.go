@@ -129,4 +129,4 @@ func init() {
 	serveCmd.Flags().StringVarP(&serveProvider, "provider", "p", "auto", "Kullanılacak AI Provider (gemini, openai, vs)")
 	serveCmd.Flags().StringVarP(&uiUrl, "ui-url", "u", "", "Uzak UI deposunun .zip indirme bağlantısı (örneğin github release URL'si)")
 	rootCmd.AddCommand(serveCmd)
-}`
+}
