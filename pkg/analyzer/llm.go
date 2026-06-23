@@ -60,10 +60,14 @@ func GetLLM(ctx context.Context, provider string) (llms.Model, error) {
 		)
 	}
 	if provider == "openrouter" || (provider == "auto" && os.Getenv("OPENROUTER_API_KEY") != "") {
+		model := os.Getenv("OPENROUTER_MODEL")
+		if model == "" {
+			model = "google/gemini-2.5-flash"
+		}
 		return openai.New(
 			openai.WithToken(os.Getenv("OPENROUTER_API_KEY")),
 			openai.WithBaseURL("https://openrouter.ai/api/v1"),
-			openai.WithModel("google/gemini-2.5-flash"),
+			openai.WithModel(model),
 		)
 	}
 	if provider == "gemini" || (provider == "auto" && os.Getenv("GEMINI_API_KEY") != "") {

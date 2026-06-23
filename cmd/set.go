@@ -37,6 +37,15 @@ var setCmd = &cobra.Command{
 		homeDir, _ := os.UserHomeDir()
 		envPath := filepath.Join(homeDir, ".banriflow.env")
 
+		openrouterModel := ""
+		if provider == "openrouter" {
+			promptModel := &survey.Input{
+				Message: "Enter your preferred OpenRouter Model (e.g. google/gemini-2.5-flash, anthropic/claude-3.5-sonnet):",
+				Default: "google/gemini-2.5-flash",
+			}
+			survey.AskOne(promptModel, &openrouterModel)
+		}
+
 		envVar := ""
 		switch provider {
 		case "gemini":
@@ -53,6 +62,10 @@ var setCmd = &cobra.Command{
 		}
 
 		content := fmt.Sprintf("%s=%s\nDEFAULT_PROVIDER=%s\n", envVar, key, provider)
+		if openrouterModel != "" {
+			content += fmt.Sprintf("OPENROUTER_MODEL=%s\n", openrouterModel)
+		}
+
 		err = os.WriteFile(envPath, []byte(content), 0600)
 		if err != nil {
 			fmt.Printf("Error saving config: %v\n", err)
