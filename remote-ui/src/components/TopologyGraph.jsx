@@ -32,9 +32,9 @@ const AsciiNode = ({ data }) => {
 
   return (
     <div className={`font-mono text-xs p-2 rounded-lg bg-slate-950/90 border ${borderClass} ${shadowClass} backdrop-blur-md cursor-pointer hover:border-cyan-400 transition-colors`}>
-      <Handle type="target" position={Position.Top} className="w-2 h-2 bg-slate-600 !border-none" />
+      <Handle type="target" position={Position.Top} className="!opacity-0 !border-none" />
       <pre className={`${colorClass} leading-tight m-0`}>{renderAscii()}</pre>
-      <Handle type="source" position={Position.Bottom} className="w-2 h-2 bg-slate-600 !border-none" />
+      <Handle type="source" position={Position.Bottom} className="!opacity-0 !border-none" />
     </div>
   );
 };
@@ -60,14 +60,22 @@ export default function TopologyGraph({ data, onNodeClick }) {
   useEffect(() => {
     if (!data || !data.nodes) return;
 
+    // Fix specific namespaces (like kubernetes service being in default)
+    const fixedDataNodes = data.nodes.map(n => {
+      if (n.name === 'kubernetes' && n.group === 'service') {
+        return { ...n, namespace: 'kube-system' };
+      }
+      return n;
+    });
+
     // 1. Find unique namespaces
-    const namespaces = [...new Set(data.nodes.map(n => n.namespace || 'default'))];
+    const namespaces = [...new Set(fixedDataNodes.map(n => n.namespace || 'default'))];
     
     // 2. Build parent nodes for each namespace
     const newNodes = [];
     
     namespaces.forEach((ns, nsIndex) => {
-      const nsNodes = data.nodes.filter(n => (n.namespace || 'default') === ns);
+      const nsNodes = fixedDataNodes.filter(n => (n.namespace || 'default') === ns);
       
       // Calculate how big the namespace box needs to be
       const cols = Math.max(2, Math.ceil(Math.sqrt(nsNodes.length)));
@@ -144,7 +152,6 @@ export default function TopologyGraph({ data, onNodeClick }) {
         fitView
       >
         <Background color="#334155" gap={24} size={1.5} />
-        <Controls className="!bg-slate-900 !border-slate-700 !fill-slate-400" />
       </ReactFlow>
     </div>
   );
