@@ -144,9 +144,25 @@ var serveCmd = &cobra.Command{
 					}
 					fmt.Fprintf(w, "data: %s\n\n", msg)
 					if err := w.Flush(); err != nil {
-						return // İstemci bağlantıyı kestiğinde (refresh, close) döngüden çık
+						return
 					}
 				}
+			})
+			return nil
+		})
+
+		app.Get("/api/solve/stream", func(c *fiber.Ctx) error {
+			ns := c.Query("ns")
+			pod := c.Query("pod")
+			errMsg := c.Query("err")
+
+			c.Set("Content-Type", "text/event-stream")
+			c.Set("Cache-Control", "no-cache")
+			c.Set("Connection", "keep-alive")
+			c.Set("Transfer-Encoding", "chunked")
+
+			c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+				cluster.AutoFixStream(context.Background(), serveProvider, ns, pod, errMsg, w)
 			})
 			return nil
 		})

@@ -39,7 +39,7 @@ JSON format:
 ]
 `
 
-func getLLM(ctx context.Context, provider string) (llms.Model, error) {
+func GetLLM(ctx context.Context, provider string) (llms.Model, error) {
 	if provider == "auto" {
 		if def := os.Getenv("DEFAULT_PROVIDER"); def != "" {
 			provider = def
@@ -82,7 +82,7 @@ func RunAIAnalysis(ctx context.Context, filePath string, provider string, custom
 		return nil, fmt.Errorf("read error: %w", err)
 	}
 
-	llm, err := getLLM(ctx, provider)
+	llm, err := GetLLM(ctx, provider)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func RunTopologyAnalysis(ctx context.Context, filePaths []string, provider strin
 		allContent.WriteString(fmt.Sprintf("--- File: %s ---\n%s\n\n", fp, string(content)))
 	}
 
-	llm, err := getLLM(ctx, provider)
+	llm, err := GetLLM(ctx, provider)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +202,7 @@ JSON format:
 }
 
 func RunAnalyzeLiveTopology(ctx context.Context, liveState string, provider string, customInstruction string) (*Result, error) {
-	llm, err := getLLM(ctx, provider)
+	llm, err := GetLLM(ctx, provider)
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +271,7 @@ JSON format:
 }
 
 func AskAIForLogSolution(ctx context.Context, provider string, logMessage string) (string, error) {
-	llm, err := getLLM(ctx, provider)
+	llm, err := GetLLM(ctx, provider)
 	if err != nil {
 		return "", err
 	}
@@ -291,5 +291,9 @@ Log Mesajı: "%s"`, logMessage)
 		return "", fmt.Errorf("AI solution failed: %w", err)
 	}
 
-	return strings.TrimSpace(completion), nil
+	cleanMsg := strings.TrimSpace(completion)
+	cleanMsg = strings.ReplaceAll(cleanMsg, "\n", " ")
+	cleanMsg = strings.ReplaceAll(cleanMsg, "\r", "")
+
+	return cleanMsg, nil
 }
