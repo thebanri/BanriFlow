@@ -137,16 +137,14 @@ var serveCmd = &cobra.Command{
 				cluster.AddClient(ch)
 				defer cluster.RemoveClient(ch)
 
-				ctx, cancel := context.WithCancel(c.Context())
-				defer cancel()
-
 				for {
-					select {
-					case <-ctx.Done():
+					msg, ok := <-ch
+					if !ok {
 						return
-					case msg := <-ch:
-						fmt.Fprintf(w, "data: %s\n\n", msg)
-						w.Flush()
+					}
+					fmt.Fprintf(w, "data: %s\n\n", msg)
+					if err := w.Flush(); err != nil {
+						return // İstemci bağlantıyı kestiğinde (refresh, close) döngüden çık
 					}
 				}
 			})
