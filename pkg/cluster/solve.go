@@ -19,7 +19,27 @@ func AutoFixStream(ctx context.Context, provider, namespace, pod, errMsg, userIn
 		w.Flush()
 	}
 
-	sendMsg(fmt.Sprintf("🔄 Hedef Pod: %s/%s", namespace, pod))
+	actualPod := pod
+	// Eğer kullanıcı aynı incident üzerinden peş peşe mesaj atıyorsa, önceki mesaj deployment'ı yamalamış ve eski pod silinmiş olabilir.
+	// Bu yüzden her çağrıda prefix'ten yola çıkarak en güncel pod'u bulmaya çalışıyoruz.
+	parts := strings.Split(pod, "-")
+	var prefix string
+	if len(parts) >= 3 {
+		prefix = strings.Join(parts[:len(parts)-2], "-")
+	} else {
+		prefix = pod
+	}
+
+	findCmd := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf("kubectl get pods -n %s --no-headers | grep '^%s-' | head -n 1 | awk '{print $1}'", namespace, prefix))
+	findOut, err := findCmd.CombinedOutput()
+	foundPod := strings.TrimSpace(string(findOut))
+	if err == nil && foundPod != "" && foundPod != pod {
+		sendMsg(fmt.Sprintf("🔄 KubeSight: Eski pod (%s) artık yok. İşleme güncel pod (%s) üzerinden devam ediliyor.", pod, foundPod))
+		actualPod = foundPod
+	} else {
+		sendMsg(fmt.Sprintf("🔄 Hedef Pod: %s/%s", namespace, actualPod))
+	}
+
 	if userInput != "" {
 		sendMsg(fmt.Sprintf("🧑‍💻 Kullanıcı Talimatı İşleniyor: %s", userInput))
 	} else {
@@ -49,10 +69,10 @@ SADECE KOMUTU YAZ! (Markdown backtick kullanma, sadece saf komut)
 
 Namespace: %s
 Pod: %s
-Hata: %s`, namespace, pod, errMsg)
+Hata: %s`, namespace, actualPod, errMsg)
 
 	// Try to fetch last 20 lines of logs to give AI more context
-	logCmd := exec.CommandContext(ctx, "kubectl", "logs", pod, "-n", namespace, "--all-containers", "--tail=20")
+	logCmd := exec.CommandContext(ctx, "kubectl", "logs", actualPod, "-n", namespace, "--all-containers", "--tail=20")
 	logOut, _ := logCmd.CombinedOutput()
 	logStr := strings.TrimSpace(string(logOut))
 	if len(logStr) > 0 && len(logStr) < 2000 {
@@ -107,7 +127,7 @@ Hata: %s`, namespace, pod, errMsg)
 			time.Sleep(5 * time.Second)
 			sendMsg("🔍 Durum doğrulanıyor...")
 
-			checkCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", pod, "-n", namespace, "-o", "jsonpath={.status.phase} {.status.containerStatuses[0].state.waiting.reason}")
+			checkCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", actualPod, "-n", namespace, "-o", "jsonpath={.status.phase} {.status.containerStatuses[0].state.waiting.reason}")
 			statusOut, checkErr := checkCmd.CombinedOutput()
 			status := strings.TrimSpace(string(statusOut))
 
