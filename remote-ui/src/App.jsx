@@ -16,8 +16,9 @@ function App() {
   ]);
 
   useEffect(() => {
-    // Fetch topology
-    axios.get('/api/topology')
+    // Fetch topology directly from the Go API server on port 3005
+    const apiUrl = `http://${window.location.hostname}:3005/api/topology`;
+    axios.get(apiUrl)
       .then(res => {
         if (res.data && typeof res.data === 'object' && !res.data.error) {
           // Go serializes nil slices as null, so we must fallback to []
