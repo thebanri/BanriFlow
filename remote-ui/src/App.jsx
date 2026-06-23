@@ -19,9 +19,19 @@ function App() {
     // Fetch topology
     axios.get('/api/topology')
       .then(res => {
-        if (res.data && !res.data.error) {
-          setGraphData(res.data);
+        if (res.data && typeof res.data === 'object' && !res.data.error) {
+          // Go serializes nil slices as null, so we must fallback to []
+          setGraphData({
+            nodes: res.data.nodes || [],
+            links: res.data.links || []
+          });
           setLogs(prev => [...prev, { id: Date.now(), time: new Date().toLocaleTimeString(), text: "Cluster topology loaded successfully." }]);
+        } else if (res.data && res.data.error) {
+          console.error("Cluster API Error:", res.data.error);
+          setLogs(prev => [...prev, { id: Date.now(), time: new Date().toLocaleTimeString(), text: "[ERROR] " + res.data.error }]);
+        } else {
+          console.warn("Unexpected API response (Go server running?):", res.data);
+          setLogs(prev => [...prev, { id: Date.now(), time: new Date().toLocaleTimeString(), text: "[WARN] Unexpected API response. Backend offline?" }]);
         }
       })
       .catch(err => {

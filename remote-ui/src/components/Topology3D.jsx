@@ -6,13 +6,15 @@ export default function Topology3D({ data, onNodeClick }) {
   const fgRef = useRef();
 
   useEffect(() => {
-    if (fgRef.current && data.nodes.length > 0) {
+    if (fgRef.current && data && data.nodes && data.nodes.length > 0) {
       // Small delay to allow layout to settle
       setTimeout(() => {
         fgRef.current.d3Force('charge').strength(-200);
       }, 100);
     }
   }, [data]);
+
+  if (!data || !data.nodes) return null;
 
   return (
     <ForceGraph3D
