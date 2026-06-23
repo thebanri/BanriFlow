@@ -42,8 +42,9 @@ SADECE KOMUTU YAZ! (Markdown backtick kullanma, sadece saf komut)
 3. KUBERNETES KURALI: Çalışan bir Pod üzerinde 'kubectl patch pod' veya 'kubectl edit pod' KESİNLİKLE KULLANMA! Bir pod'un 'image' özelliği dışındaki hiçbir alanını (command, resources, env) doğrudan değiştiremezsin (Forbidden hatası verir). Değişiklik yapmak istiyorsan her zaman o Pod'u yöneten DEPLOYMENT'i yamala (patch/set).
    - YANLIŞ: kubectl patch pod ornek-pod-1234 -p ...
    - DOĞRU: kubectl patch deployment ornek -p ... (Deployment adı genellikle Pod adından sondaki 2 hash silinerek bulunur, örn: pod "crash-app-123-456" ise deployment adı "crash-app"tir).
-4. ÇÖZÜLEMEYEN SORUNLAR: Eğer hata "ImagePullBackOff" ise ve sorunun ne olduğundan %100 emin değilsen "echo" komutu üret. FAKAT, eğer imaj adında ÇOK BARİZ bir yazım hatası varsa (örneğin nginxx, ubutnu, rediss) bunu otomatik olarak bilinen public imaj adıyla (nginx, ubuntu, redis) değiştiren bir komut üretebilirsin.
-5. CONTAINER ADI BİLİNMİYORSA: Eger "kubectl set image" komutu kullanacaksan ve container adını bilmiyorsan, container adı yerine "*" kullanarak tüm container'ları hedefle. (Örn: kubectl set image deployment/ornek-uyg *=yeni-imaj:latest -n namespace)
+4. ÇÖZÜLEMEYEN VEYA EMİN OLUNAMAYAN SORUNLAR: Eğer sorunu tek bir YAML/patch komutuyla kesin olarak ÇÖZEMEYECEKSEN (örneğin loglara bakman gerekiyorsa veya CrashLoopBackOff/ImagePullBackOff'un tam nedenini bilmiyorsan), kubectl komutları ÇALIŞTIRMA! Bunun yerine kullanıcıya ne yapması gerektiğini söyleyen bir "echo" komutu üret. ASLA 'kubectl logs' veya 'kubectl describe' gibi sadece okuma yapan komutlar üretme, sadece kalıcı olarak çözen komutlar üret veya 'echo' ile tavsiye ver.
+5. NAMESPACE ZORUNLULUĞU: Ürettiğin HİÇBİR kubectl komutunda namespace'i unutma! Her komutun sonuna kesinlikle '-n <Namespace>' ekle. (Eğer echo kullanmıyorsan).
+6. CONTAINER ADI BİLİNMİYORSA: Eger "kubectl set image" komutu kullanacaksan ve container adını bilmiyorsan, container adı yerine "*" kullanarak tüm container'ları hedefle. (Örn: kubectl set image deployment/ornek-uyg *=yeni-imaj:latest -n namespace)
 
 Namespace: %s
 Pod: %s
