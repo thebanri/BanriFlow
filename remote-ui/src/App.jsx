@@ -44,13 +44,7 @@ function App() {
   return (
     <div className="w-screen h-screen bg-slate-950 text-slate-100 overflow-hidden relative font-sans">
       
-      {/* Top Left Header (Updated as requested) */}
-      <div className="absolute top-6 left-6 z-20 glass px-6 py-3 rounded-2xl border border-slate-700/50">
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent tracking-tight">
-          KubeSight
-        </h1>
-        <p className="text-xs text-slate-400 font-medium tracking-wide">AI CLOUD AUDIT</p>
-      </div>
+
 
       {/* Hamburger Toggle */}
       <button 
