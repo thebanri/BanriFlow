@@ -13,8 +13,8 @@ import 'reactflow/dist/style.css';
 const AsciiNode = ({ data }) => {
   const isError = data.status === 'error';
   const colorClass = isError ? 'text-red-500' : (data.group === 'service' ? 'text-purple-400' : 'text-emerald-400');
-  const borderClass = isError ? 'border-red-500/50' : 'border-cyan-500/30';
-  const shadowClass = isError ? 'shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'shadow-[0_0_15px_rgba(6,182,212,0.1)]';
+  const borderClass = isError ? 'border-red-500/30' : 'border-cyan-500/10';
+  const shadowClass = isError ? 'shadow-[0_0_10px_rgba(239,68,68,0.1)]' : 'shadow-[0_0_10px_rgba(6,182,212,0.05)]';
 
   const renderAscii = () => {
     const title = `[ ${data.group.toUpperCase().substring(0,10).padEnd(10, ' ')} ]`;
@@ -31,7 +31,7 @@ const AsciiNode = ({ data }) => {
   };
 
   return (
-    <div className={`font-mono text-xs p-2 rounded-lg bg-slate-950/90 border ${borderClass} ${shadowClass} backdrop-blur-md cursor-pointer hover:border-cyan-400 transition-colors`}>
+    <div className={`font-mono text-xs p-2 rounded-lg bg-slate-950/80 border ${borderClass} ${shadowClass} backdrop-blur-md cursor-pointer hover:border-cyan-500/30 hover:bg-slate-900/90 transition-all duration-300`}>
       <Handle type="target" position={Position.Left} className="!opacity-0 !border-none" />
       <pre className={`${colorClass} leading-tight m-0`}>{renderAscii()}</pre>
       <Handle type="source" position={Position.Right} className="!opacity-0 !border-none" />
@@ -239,6 +239,7 @@ export default function TopologyGraph({ data, onNodeClick }) {
         onEdgesChange={onEdgesChange}
         onNodeDragStart={onNodeDragStart}
         onNodeDragStop={onNodeDragStop}
+        proOptions={{ hideAttribution: true }}
         onNodeClick={(_, node) => {
           if (node.type !== 'namespaceNode') onNodeClick(node.data);
         }}
