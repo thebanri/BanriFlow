@@ -72,11 +72,16 @@ export default function LogTerminal({ logs }) {
       <div className="flex-1 p-4 overflow-y-auto font-mono text-xs text-slate-300 space-y-1.5 bg-black/60 custom-scrollbar">
         {logs.map((log) => {
           let textClass = 'text-slate-300';
+          let bgClass = 'hover:bg-white/5';
           if (log.text.includes('Warning') || log.text.includes('WARN')) textClass = 'text-yellow-400';
           if (log.text.includes('Error') || log.text.includes('ERROR')) textClass = 'text-red-400';
+          if (log.text.includes('[AI-Ops]')) {
+            textClass = 'text-emerald-300 font-medium';
+            bgClass = 'bg-emerald-500/10 border border-emerald-500/20';
+          }
           
           return (
-            <div key={log.id} className="flex gap-3 leading-relaxed hover:bg-white/5 p-0.5 rounded">
+            <div key={log.id} className={`flex gap-3 leading-relaxed p-1.5 rounded ${bgClass}`}>
               <span className="text-cyan-500/70 shrink-0 select-none">[{log.time}]</span>
               <span className={`${textClass} break-all`}>{log.text}</span>
             </div>

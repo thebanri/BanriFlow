@@ -102,7 +102,7 @@ var serveCmd = &cobra.Command{
 		}
 
 		// Start global Kubernetes Event watcher to persist events
-		go cluster.StartGlobalEventWatcher(context.Background())
+		go cluster.StartGlobalEventWatcher(context.Background(), serveProvider)
 
 		// Web Server setup
 		app := fiber.New(fiber.Config{

@@ -269,3 +269,27 @@ JSON format:
 		Issues: issues,
 	}, nil
 }
+
+func AskAIForLogSolution(ctx context.Context, provider string, logMessage string) (string, error) {
+	llm, err := getLLM(ctx, provider)
+	if err != nil {
+		return "", err
+	}
+
+	prompt := fmt.Sprintf(`Sen Kıdemli bir DevOps ve Kubernetes Uzmanısın. Aşağıdaki Kubernetes log mesajı bir HATA (Error) veya UYARI (Warning) içeriyor.
+Lütfen bu hatanın neden kaynaklandığını ve nasıl çözülebileceğini doğrudan ve ÇOK KISA (maksimum 2-3 cümle) bir şekilde Türkçe olarak açıkla.
+Eğer çözüm için basit bir kubectl komutu veya YAML düzeltmesi gerekiyorsa, bunu da belirt.
+Sadece çözüm önerisini yaz, selamlama veya gereksiz açıklamalar yapma.
+
+Log Mesajı: "%s"`, logMessage)
+
+	completion, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt,
+		llms.WithTemperature(0.2),
+		llms.WithMaxTokens(1024),
+	)
+	if err != nil {
+		return "", fmt.Errorf("AI solution failed: %w", err)
+	}
+
+	return strings.TrimSpace(completion), nil
+}

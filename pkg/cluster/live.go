@@ -11,11 +11,14 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
-	"sigs.k8s.io/yaml"
+	"github.com/thebanri/BanriFlow/pkg/analyzer"
+	"sync"
 )
 
+var aiSolutionCache sync.Map
+
 // StartGlobalEventWatcher connects to the cluster and watches events continuously.
-func StartGlobalEventWatcher(ctx context.Context) error {
+func StartGlobalEventWatcher(ctx context.Context, aiProvider string) error {
 	var kubeconfig string
 	if home := homedir.HomeDir(); home != "" {
 		kubeconfig = filepath.Join(home, ".kube", "config")
@@ -50,6 +53,23 @@ func StartGlobalEventWatcher(ctx context.Context) error {
 			if ok {
 				msg := fmt.Sprintf("[%s] %s/%s: %s", k8sEvent.Type, k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
 				SaveEvent(msg)
+
+				// If it's a Warning, ask AI for a solution
+				if k8sEvent.Type == "Warning" {
+					cacheKey := k8sEvent.Message
+					if _, exists := aiSolutionCache.Load(cacheKey); !exists {
+						// Mark as processed immediately to prevent duplicate requests while AI is thinking
+						aiSolutionCache.Store(cacheKey, true)
+						
+						go func(ns, name, errMsg string) {
+							solution, err := analyzer.AskAIForLogSolution(context.Background(), aiProvider, errMsg)
+							if err == nil && solution != "" {
+								aiMsg := fmt.Sprintf("[AI-Ops] 💡 Çözüm Önerisi (%s/%s): %s", ns, name, solution)
+								SaveEvent(aiMsg)
+							}
+						}(k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
+					}
+				}
 			}
 		}
 	}
