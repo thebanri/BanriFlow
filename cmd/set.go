@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/spf13/cobra"
@@ -39,11 +40,28 @@ var setCmd = &cobra.Command{
 
 		openrouterModel := ""
 		if provider == "openrouter" {
-			promptModel := &survey.Input{
-				Message: "Enter your preferred OpenRouter Model (e.g. google/gemini-2.5-flash, anthropic/claude-3.5-sonnet):",
-				Default: "google/gemini-2.5-flash",
+			fmt.Println("Fetching OpenRouter models from API (this may take a few seconds)...")
+			options, err := FetchOpenRouterModels()
+			if err == nil && len(options) > 0 {
+				selected := ""
+				promptModel := &survey.Select{
+					Message:  "Search and select your preferred OpenRouter Model:",
+					Options:  options,
+					PageSize: 15,
+				}
+				survey.AskOne(promptModel, &selected)
+				if selected != "" {
+					parts := strings.SplitN(selected, " | ", 2)
+					openrouterModel = parts[0]
+				}
+			} else {
+				fmt.Printf("Warning: Failed to fetch models from OpenRouter (%v)\n", err)
+				promptModel := &survey.Input{
+					Message: "Enter your preferred OpenRouter Model manually (e.g. google/gemini-2.5-flash):",
+					Default: "google/gemini-2.5-flash",
+				}
+				survey.AskOne(promptModel, &openrouterModel)
 			}
-			survey.AskOne(promptModel, &openrouterModel)
 		}
 
 		envVar := ""
