@@ -10,10 +10,7 @@ function App() {
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
   const [selectedNode, setSelectedNode] = useState(null);
   const [isRightMenuOpen, setIsRightMenuOpen] = useState(false);
-  const [logs, setLogs] = useState([
-    { id: 1, time: new Date().toLocaleTimeString(), text: "KubeSight Dashboard initialized." },
-    { id: 2, time: new Date().toLocaleTimeString(), text: "Connecting to cluster API..." }
-  ]);
+  const [logs, setLogs] = useState([]);
 
   useEffect(() => {
     // Fetch static topology directly from the Go API server on port 3005
@@ -37,7 +34,7 @@ function App() {
         if (Array.isArray(res.data)) {
           const historicalLogs = res.data.map(ev => ({
             id: ev.timestamp,
-            time: new Date(ev.timestamp).toLocaleTimeString(),
+            time: new Date(ev.timestamp).toLocaleTimeString('tr-TR', { hour12: false }),
             text: ev.text
           }));
           setLogs(historicalLogs.slice(-100)); // Load up to last 100 historical logs
@@ -50,9 +47,9 @@ function App() {
     
     eventSource.onmessage = (e) => {
       setLogs(prev => {
-        const newLogs = [...prev, { id: Date.now() + Math.random(), time: new Date().toLocaleTimeString(), text: e.data }];
-        // Keep only last 50 logs to prevent memory leak
-        return newLogs.slice(-50);
+        const newLogs = [...prev, { id: Date.now() + Math.random(), time: new Date().toLocaleTimeString('tr-TR', { hour12: false }), text: e.data }];
+        // Keep only last 100 logs to prevent memory leak
+        return newLogs.slice(-100);
       });
     };
 
