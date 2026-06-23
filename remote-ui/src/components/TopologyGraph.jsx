@@ -32,9 +32,9 @@ const AsciiNode = ({ data }) => {
 
   return (
     <div className={`font-mono text-xs p-2 rounded-lg bg-slate-950/90 border ${borderClass} ${shadowClass} backdrop-blur-md cursor-pointer hover:border-cyan-400 transition-colors`}>
-      <Handle type="target" position={Position.Top} className="!opacity-0 !border-none" />
+      <Handle type="target" position={Position.Left} className="!opacity-0 !border-none" />
       <pre className={`${colorClass} leading-tight m-0`}>{renderAscii()}</pre>
-      <Handle type="source" position={Position.Bottom} className="!opacity-0 !border-none" />
+      <Handle type="source" position={Position.Right} className="!opacity-0 !border-none" />
     </div>
   );
 };
@@ -60,7 +60,6 @@ export default function TopologyGraph({ data, onNodeClick }) {
   useEffect(() => {
     if (!data || !data.nodes) return;
 
-    // Fix specific namespaces (like kubernetes service being in default)
     const fixedDataNodes = data.nodes.map(n => {
       if (n.name === 'kubernetes' && n.group === 'service') {
         return { ...n, namespace: 'kube-system' };
@@ -68,47 +67,84 @@ export default function TopologyGraph({ data, onNodeClick }) {
       return n;
     });
 
-    // 1. Find unique namespaces
     const namespaces = [...new Set(fixedDataNodes.map(n => n.namespace || 'default'))];
     
-    // 2. Build parent nodes for each namespace
     const newNodes = [];
+    let cumulativeX = 0; // Prevent namespace overlapping
     
-    namespaces.forEach((ns, nsIndex) => {
+    namespaces.forEach((ns) => {
       const nsNodes = fixedDataNodes.filter(n => (n.namespace || 'default') === ns);
+      const services = nsNodes.filter(n => n.group === 'service');
+      const pods = nsNodes.filter(n => n.group === 'pod');
       
-      // Calculate how big the namespace box needs to be
-      const cols = Math.max(2, Math.ceil(Math.sqrt(nsNodes.length)));
-      const rows = Math.ceil(nsNodes.length / cols);
+      let currentY = 50;
+      let maxCols = 1;
       
-      const boxWidth = cols * 250 + 100;
-      const boxHeight = rows * 180 + 100;
+      const placedPodIds = new Set();
+      
+      // Layout Services and their connected Pods
+      services.forEach(svc => {
+        // Find connected pods
+        const connectedLinks = (data.links || []).filter(l => l.source === svc.id || (l.source.id && l.source.id === svc.id));
+        const connectedPodIds = connectedLinks.map(l => typeof l.target === 'object' ? l.target.id : l.target);
+        const connectedPods = pods.filter(p => connectedPodIds.includes(p.id));
+        
+        // Place Service on left
+        newNodes.push({
+          id: svc.id,
+          type: 'asciiNode',
+          position: { x: 50, y: currentY + (connectedPods.length > 0 ? (connectedPods.length * 150) / 2 - 75 : 0) },
+          parentNode: `ns-${ns}`,
+          extent: 'parent',
+          data: { ...svc },
+        });
 
-      // Add the Namespace Box (Parent)
+        // Place connected Pods on right, stacking upwards/downwards
+        connectedPods.forEach((pod, idx) => {
+          newNodes.push({
+            id: pod.id,
+            type: 'asciiNode',
+            position: { x: 350, y: currentY + idx * 150 },
+            parentNode: `ns-${ns}`,
+            extent: 'parent',
+            data: { ...pod },
+          });
+          placedPodIds.add(pod.id);
+        });
+
+        if (connectedPods.length > 0) maxCols = 2;
+        currentY += Math.max(1, connectedPods.length) * 150 + 50;
+      });
+
+      // Layout Standalone Pods
+      const standalonePods = pods.filter(p => !placedPodIds.has(p.id));
+      standalonePods.forEach(pod => {
+        newNodes.push({
+          id: pod.id,
+          type: 'asciiNode',
+          position: { x: 50, y: currentY },
+          parentNode: `ns-${ns}`,
+          extent: 'parent',
+          data: { ...pod },
+        });
+        currentY += 150;
+      });
+
+      // Calculate Parent Box Size
+      const boxWidth = (maxCols * 300) + 150;
+      const boxHeight = Math.max(300, currentY);
+
       newNodes.push({
         id: `ns-${ns}`,
         type: 'namespaceNode',
-        position: { x: nsIndex * 900, y: 0 }, // Group them side by side
+        position: { x: cumulativeX, y: 0 },
         style: { width: boxWidth, height: boxHeight },
         data: { label: ns },
       });
 
-      // Add the actual pods/services inside this box
-      nsNodes.forEach((n, i) => {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        newNodes.push({
-          id: n.id,
-          type: 'asciiNode',
-          position: { x: col * 250 + 50, y: row * 180 + 50 }, // Relative to parent!
-          parentNode: `ns-${ns}`,
-          extent: 'parent',
-          data: { ...n },
-        });
-      });
+      cumulativeX += boxWidth + 100; // Add padding between namespaces
     });
 
-    // 3. Build edges
     const newEdges = (data.links || []).map((l, i) => {
       const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
       const targetId = typeof l.target === 'object' ? l.target.id : l.target;
@@ -117,10 +153,7 @@ export default function TopologyGraph({ data, onNodeClick }) {
         source: sourceId,
         target: targetId,
         animated: true, 
-        style: { 
-          stroke: l.status === 'error' ? '#ef4444' : '#0ea5e9', 
-          strokeWidth: 2, 
-        },
+        style: { stroke: l.status === 'error' ? '#ef4444' : '#0ea5e9', strokeWidth: 2 },
       };
     });
 
