@@ -78,13 +78,15 @@ Error: %s`, namespace, actualPod, errMsg)
 	logCmd := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf("kubectl logs %s -n %s --all-containers --tail=20 || kubectl logs %s -n %s --all-containers --tail=20 --previous", actualPod, namespace, actualPod, namespace))
 	logOut, _ := logCmd.CombinedOutput()
 	logStr := strings.TrimSpace(string(logOut))
+	prompt += "\n\nCRITICAL NOTE: The user might ask you to 'check logs' or the error might be CrashLoopBackOff. DO NOT reply saying 'I cannot read logs'! The recent logs have already been automatically fetched and are ATTACHED BELOW! READ THE LOGS BELOW to find the root cause (e.g. a typo in a sleep command), and directly output a 'kubectl patch deployment' command to fix it!"
 	if len(logStr) > 0 {
-		prompt += "\n\nCRITICAL NOTE: The user might ask you to 'check logs' or the error might be CrashLoopBackOff. DO NOT reply saying 'I cannot read logs'! The recent logs have already been automatically fetched and are ATTACHED BELOW! READ THE LOGS BELOW to find the root cause (e.g. a typo in a sleep command), and directly output a 'kubectl patch deployment' command to fix it!"
 		if len(logStr) < 2000 {
 			prompt += fmt.Sprintf("\n\n--- INJECTED POD LOGS (Last 20 Lines) ---\n%s\n---------------------------------", logStr)
 		} else {
 			prompt += fmt.Sprintf("\n\n--- INJECTED POD LOGS (Last 20 Lines) ---\n%s\n---------------------------------", logStr[:2000]+" ...[TRUNCATED]")
 		}
+	} else {
+		prompt += "\n\n--- INJECTED POD LOGS (Last 20 Lines) ---\n(Empty - No logs available or pod was deleted)\n---------------------------------"
 	}
 
 	if userInput != "" {
