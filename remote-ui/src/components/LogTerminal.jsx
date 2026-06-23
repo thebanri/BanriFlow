@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TerminalSquare, Lightbulb } from 'lucide-react';
+import { TerminalSquare, Lightbulb, Bot } from 'lucide-react';
 
 export default function LogTerminal({ logs, onSolve }) {
   const [height, setHeight] = useState(192); // Default tailwind h-48 = 192px
@@ -75,16 +75,19 @@ export default function LogTerminal({ logs, onSolve }) {
             const isAI = log.text.includes('[AI-Ops]');
 
             return (
-              <div key={log.id} className="font-mono text-sm break-all flex group">
-                <span className="text-slate-500 mr-3 select-none flex-shrink-0">[{log.time}]</span>
-                <span className={`
-                  flex-1
-                  ${isWarning ? 'text-yellow-400' : ''}
-                  ${isError ? 'text-red-400 font-bold' : ''}
-                  ${isAI ? 'text-emerald-400/90 italic border-l-2 border-emerald-500/50 pl-2 ml-1 bg-emerald-500/5 py-1' : 'text-slate-300'}
-                `}>
-                  {log.text}
-                </span>
+              <div key={log.id} className={`font-mono text-sm flex flex-col sm:flex-row sm:items-start gap-2 group p-1.5 rounded-lg transition-colors ${isAI ? 'bg-emerald-500/5 border border-emerald-500/20 shadow-sm my-1' : 'hover:bg-slate-800/30'}`}>
+                <div className="flex flex-1 gap-3">
+                  <span className="text-slate-500 select-none flex-shrink-0 mt-0.5">[{log.time}]</span>
+                  <span className={`
+                    flex-1 break-all
+                    ${isWarning ? 'text-yellow-400' : ''}
+                    ${isError ? 'text-red-400 font-bold' : ''}
+                    ${isAI ? 'text-emerald-400/90 leading-relaxed' : 'text-slate-300'}
+                  `}>
+                    {isAI ? <Bot size={14} className="inline mr-1.5 mb-0.5 text-emerald-500" /> : null}
+                    {log.text}
+                  </span>
+                </div>
 
                 {isAI && (
                   <button 
@@ -94,7 +97,7 @@ export default function LogTerminal({ logs, onSolve }) {
                         onSolve(match[1], match[2], match[3]);
                       }
                     }}
-                    className="ml-2 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-3 py-0.5 rounded flex items-center gap-1.5 text-xs font-bold border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.3)] active:scale-95"
+                    className="self-end sm:self-start flex-shrink-0 opacity-80 hover:opacity-100 transition-all bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 px-3 py-1.5 rounded-md flex items-center gap-1.5 text-xs font-bold border border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)] hover:shadow-[0_0_15px_rgba(16,185,129,0.4)] active:scale-95"
                   >
                     <Lightbulb size={14} /> ÇÖZÜMÜ UYGULA
                   </button>
