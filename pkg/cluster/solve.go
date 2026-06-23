@@ -60,7 +60,7 @@ CRITICAL RULES:
 1. NEVER use bash redirection operators like "<" or ">" (even as placeholders). Use dummy values if needed (e.g. dummy-user instead of <USER>).
 2. NEVER use 'kubectl patch pod' or 'kubectl edit pod' on a running Pod! You cannot modify anything other than the 'image' on a live pod. To change commands, resources, or env vars, YOU MUST PATCH THE PARENT DEPLOYMENT.
    - WRONG: kubectl patch pod my-pod-1234 -p ...
-   - CORRECT: kubectl patch deployment my-deployment -p ... (You can usually find the deployment name by stripping the last two hash suffixes from the pod name).
+   - CORRECT: kubectl patch deployment my-deployment -p ... (The exact deployment name is provided below).
 3. UNSOLVABLE OR UNKNOWN ISSUES: If you are NOT 100%% sure how to fix the issue with a single patch/set command, DO NOT try to guess. Instead, output an 'echo' command advising the user what to check. 
    - NEVER output read-only commands like 'kubectl logs' or 'kubectl describe' as your final command!
    - ONLY output permanent fix commands (patch, set, apply) OR an 'echo' command with advice.
@@ -72,7 +72,8 @@ CRITICAL RULES:
 
 Namespace: %s
 Pod: %s
-Background Analysis: %s`, namespace, actualPod, errMsg)
+Deployment: %s
+Background Analysis: %s`, namespace, actualPod, prefix, errMsg)
 
 	// Try to fetch last 20 lines of logs to give AI more context
 	// We check both current and previous (crashed) container logs
