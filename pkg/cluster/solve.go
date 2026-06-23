@@ -31,6 +31,11 @@ func AutoFixStream(ctx context.Context, provider, namespace, pod, errMsg string,
 	prompt := fmt.Sprintf(`Sen bir Kubernetes otomatik onarım asistanısın.
 Aşağıdaki hatayı çözmek için ÇALIŞTIRILACAK TEK BİR BASH/KUBECTL KOMUTU üret.
 SADECE KOMUTU YAZ! (Markdown backtick kullanma, sadece saf komut)
+
+ÇOK ÖNEMLİ KURALLAR:
+1. KESİNLİKLE "<" veya ">" gibi Bash yönlendirme operatörlerini (yer tutucu olarak bile olsa) KULLANMA! (Örn: <KULLANICI_ADI> YAZMA, yerine dummy-user yaz).
+2. Tırnak işaretlerini (", ') doğru ve güvenli kullan.
+
 Namespace: %s
 Pod: %s
 Hata: %s
