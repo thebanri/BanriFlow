@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bufio"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -113,6 +115,32 @@ var serveCmd = &cobra.Command{
 				return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 			}
 			return c.JSON(data)
+		})
+
+		app.Get("/api/events", func(c *fiber.Ctx) error {
+			c.Set("Content-Type", "text/event-stream")
+			c.Set("Cache-Control", "no-cache")
+			c.Set("Connection", "keep-alive")
+			c.Set("Transfer-Encoding", "chunked")
+
+			c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+				ch := make(chan string)
+				ctx, cancel := context.WithCancel(c.Context())
+				defer cancel()
+
+				go cluster.WatchEvents(ctx, ch)
+
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case msg := <-ch:
+						fmt.Fprintf(w, "data: %s\n\n", msg)
+						w.Flush()
+					}
+				}
+			})
+			return nil
 		})
 
 		// Serve static UI downloaded from remote

@@ -16,29 +16,42 @@ function App() {
   ]);
 
   useEffect(() => {
-    // Fetch topology directly from the Go API server on port 3005
+    // Fetch static topology directly from the Go API server on port 3005
     const apiUrl = `http://${window.location.hostname}:3005/api/topology`;
     axios.get(apiUrl)
       .then(res => {
         if (res.data && typeof res.data === 'object' && !res.data.error) {
-          // Go serializes nil slices as null, so we must fallback to []
           setGraphData({
             nodes: res.data.nodes || [],
             links: res.data.links || []
           });
-          setLogs(prev => [...prev, { id: Date.now(), time: new Date().toLocaleTimeString(), text: "Cluster topology loaded successfully." }]);
-        } else if (res.data && res.data.error) {
-          console.error("Cluster API Error:", res.data.error);
-          setLogs(prev => [...prev, { id: Date.now(), time: new Date().toLocaleTimeString(), text: "[ERROR] " + res.data.error }]);
+          setLogs(prev => [...prev, { id: Date.now(), time: new Date().toLocaleTimeString(), text: "[SYSTEM] Cluster topology loaded successfully." }]);
         } else {
-          console.warn("Unexpected API response (Go server running?):", res.data);
-          setLogs(prev => [...prev, { id: Date.now(), time: new Date().toLocaleTimeString(), text: "[WARN] Unexpected API response. Backend offline?" }]);
+          setLogs(prev => [...prev, { id: Date.now(), time: new Date().toLocaleTimeString(), text: "[ERROR] Unexpected topology response." }]);
         }
       })
       .catch(err => {
-        console.warn('API fetch failed:', err);
         setLogs(prev => [...prev, { id: Date.now(), time: new Date().toLocaleTimeString(), text: "[ERROR] Could not fetch live topology." }]);
       });
+
+    // Start Live SSE Event Stream for Kubernetes Events (e.g. Pod Crashes)
+    const eventSource = new EventSource(`http://${window.location.hostname}:3005/api/events`);
+    
+    eventSource.onmessage = (e) => {
+      setLogs(prev => {
+        const newLogs = [...prev, { id: Date.now() + Math.random(), time: new Date().toLocaleTimeString(), text: e.data }];
+        // Keep only last 50 logs to prevent memory leak
+        return newLogs.slice(-50);
+      });
+    };
+
+    eventSource.onerror = (e) => {
+      console.warn("SSE EventStream Error:", e);
+    };
+
+    return () => {
+      eventSource.close();
+    };
   }, []);
 
   return (

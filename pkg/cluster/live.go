@@ -6,12 +6,52 @@ import (
 	"path/filepath"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 	"sigs.k8s.io/yaml"
 )
+
+// WatchEvents connects to the cluster and streams events to the provided channel
+func WatchEvents(ctx context.Context, ch chan<- string) error {
+	var kubeconfig string
+	if home := homedir.HomeDir(); home != "" {
+		kubeconfig = filepath.Join(home, ".kube", "config")
+	}
+
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if err != nil {
+		return err
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return err
+	}
+
+	watcher, err := clientset.CoreV1().Events("").Watch(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	defer watcher.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case event, ok := <-watcher.ResultChan():
+			if !ok {
+				return nil
+			}
+			k8sEvent, ok := event.Object.(*corev1.Event)
+			if ok {
+				ch <- fmt.Sprintf("[%s] %s/%s: %s", k8sEvent.Type, k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
+			}
+		}
+	}
+}
 
 // FetchLiveState connects to the active Kubernetes cluster and extracts the topology
 func FetchLiveState(ctx context.Context) (string, error) {
