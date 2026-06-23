@@ -30,7 +30,7 @@ var serveCmd = &cobra.Command{
 		// 1. Mandatory AI Check
 		provider := serveProvider
 		if provider == "auto" {
-			provider = os.Getenv("AI_PROVIDER")
+			provider = os.Getenv("DEFAULT_PROVIDER")
 			if provider == "" {
 				provider = "gemini"
 			}
@@ -51,7 +51,7 @@ var serveCmd = &cobra.Command{
 		}
 
 		if apiKey == "" {
-			log.Fatalf("🚨 HATA: Yapay Zeka parametresi ZORUNLUDUR! Lütfen 'banri set' komutu ile bir API Key ayarlayın veya ilgili ortam değişkenini girin.")
+			log.Fatalf("🚨 HATA: Yapay Zeka parametresi ZORUNLUDUR! (Provider tespit edildi: '%s') Lütfen 'banri set' komutu ile bir API Key ayarlayın.", provider)
 		}
 
 		// UI Dynamic Fetch Logic

@@ -19,7 +19,9 @@ var rootCmd = &cobra.Command{
 func Execute() {
 	homeDir, _ := os.UserHomeDir()
 	envPath := filepath.Join(homeDir, ".banriflow.env")
-	_ = godotenv.Load(envPath) // ignore error if not exists
+	if err := godotenv.Overload(envPath); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("⚠️  Uyarı: .banriflow.env dosyası okunurken hata oluştu: %v\n", err)
+	}
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
