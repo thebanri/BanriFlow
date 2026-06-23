@@ -1,18 +1,8 @@
 import React, { useState } from 'react';
-import { X, Flame, Settings, BarChart2, PlusSquare, Bot, Lightbulb } from 'lucide-react';
-import SolveModal from './SolveModal';
+import { X, Flame, Settings, BarChart2, PlusSquare } from 'lucide-react';
 
-export default function RightMenu({ isOpen, onClose, selectedNode, logs = [] }) {
-  const [activeTab, setActiveTab] = useState('ai');
-  const [solveData, setSolveData] = useState(null);
-
-  // Filter logs to find unique AI ops events
-  const aiLogsMap = new Map();
-  logs.filter(l => l.text.includes('[AI-Ops]')).forEach(l => {
-    // Overwrite older logs with same message to keep it deduplicated
-    aiLogsMap.set(l.text, l); 
-  });
-  const aiLogs = Array.from(aiLogsMap.values());
+export default function RightMenu({ isOpen, onClose, selectedNode }) {
+  const [activeTab, setActiveTab] = useState('stats');
 
   return (
     <div className={`absolute top-0 right-0 h-full w-96 glass border-l border-slate-700/50 transform transition-transform duration-500 z-40 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
@@ -32,9 +22,6 @@ export default function RightMenu({ isOpen, onClose, selectedNode, logs = [] }) 
         </button>
         <button onClick={() => setActiveTab('create')} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'create' ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-400 hover:bg-slate-800'}`}>
           <PlusSquare size={16} /> Create
-        </button>
-        <button onClick={() => setActiveTab('ai')} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'ai' ? 'bg-indigo-500/20 text-indigo-400' : 'text-slate-400 hover:bg-slate-800'}`}>
-          <Bot size={16} /> AI Ops
         </button>
         <button onClick={() => setActiveTab('config')} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${activeTab === 'config' ? 'bg-slate-700 text-slate-100' : 'text-slate-400 hover:bg-slate-800'}`}>
           <Settings size={16} /> Config
@@ -90,58 +77,7 @@ export default function RightMenu({ isOpen, onClose, selectedNode, logs = [] }) 
             </button>
           </div>
         )}
-        {activeTab === 'ai' && (
-          <div className="space-y-4">
-            <h3 className="font-semibold text-slate-200">AI Incident Center</h3>
-            <p className="text-sm text-slate-400 leading-relaxed mb-4">View and resolve active AI recommendations across your cluster.</p>
-            
-            <div className="space-y-3">
-              {aiLogs.length === 0 ? (
-                <div className="p-4 border border-dashed border-slate-700 rounded-xl text-center text-slate-500 text-sm">
-                  No AI incidents detected yet.
-                </div>
-              ) : (
-                aiLogs.map((log, idx) => {
-                  const match = log.text.match(/\(([^/]+)\/([^)]+)\): (.*)/);
-                  if (!match) return null;
-                  const ns = match[1];
-                  const pod = match[2];
-                  const err = match[3];
-
-                  // Assume resolved if it's very old, or just let user click it again. 
-                  // For true resolution tracking, we'd need a backend state, but for now we just show them.
-                  return (
-                    <div key={idx} className="p-4 bg-slate-900/50 border border-slate-700/50 hover:border-emerald-500/30 transition-colors rounded-xl flex flex-col gap-3">
-                      <div className="flex justify-between items-start">
-                        <div className="text-xs font-mono text-cyan-400 bg-cyan-500/10 px-2 py-1 rounded">
-                          {ns}/{pod}
-                        </div>
-                        <span className="text-xs text-slate-500">{log.time}</span>
-                      </div>
-                      <p className="text-sm text-slate-300 leading-relaxed">{err}</p>
-                      <button 
-                        onClick={() => setSolveData({ ns, pod, err })}
-                        className="mt-2 w-full flex items-center justify-center gap-2 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-sm font-bold transition-colors"
-                      >
-                        <Lightbulb size={16} /> OTO ÇÖZ
-                      </button>
-                    </div>
-                  );
-                }).reverse() // Show newest at top
-              )}
-            </div>
-          </div>
-        )}
       </div>
-
-      {solveData && (
-        <SolveModal 
-          ns={solveData.ns} 
-          pod={solveData.pod} 
-          errMsg={solveData.err} 
-          onClose={() => setSolveData(null)} 
-        />
-      )}
     </div>
   );
 }

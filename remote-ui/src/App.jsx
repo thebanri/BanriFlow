@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import RightMenu from './components/RightMenu';
 import LogTerminal from './components/LogTerminal';
 import TopologyGraph from './components/TopologyGraph';
+import AIChatPanel from './components/AIChatPanel';
 import axios from 'axios';
 
 function App() {
@@ -86,7 +87,10 @@ function App() {
       </div>
 
       {/* Right Hamburger Menu Panel */}
-      <RightMenu isOpen={isRightMenuOpen} onClose={() => setIsRightMenuOpen(false)} selectedNode={selectedNode} logs={logs} />
+      <RightMenu isOpen={isRightMenuOpen} onClose={() => setIsRightMenuOpen(false)} selectedNode={selectedNode} />
+
+      {/* AI Chat Panel & Bubble */}
+      <AIChatPanel logs={logs} />
 
       {/* Bottom Log Terminal */}
       <div className="absolute bottom-6 left-6 right-6 z-10">

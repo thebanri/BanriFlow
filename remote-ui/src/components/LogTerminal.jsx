@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TerminalSquare, Lightbulb } from 'lucide-react';
-import SolveModal from './SolveModal';
 
 export default function LogTerminal({ logs }) {
   const [height, setHeight] = useState(192); // Default tailwind h-48 = 192px
-  const [solveData, setSolveData] = useState(null); // { ns, pod, err }
   const isDragging = useRef(false);
   const logEndRef = useRef(null);
 
@@ -40,17 +38,6 @@ export default function LogTerminal({ logs }) {
     };
   }, []);
 
-  const handleSolveClick = (text) => {
-    // text format: "[AI-Ops] 💡 Çözüm Önerisi (default/nginx-app-68b9d46459-f9dl6): ..."
-    const match = text.match(/\(([^/]+)\/([^)]+)\): (.*)/);
-    if (match) {
-      const ns = match[1];
-      const pod = match[2];
-      const err = match[3];
-      setSolveData({ ns, pod, err });
-    }
-  };
-
   return (
     <>
       <div 
@@ -83,33 +70,21 @@ export default function LogTerminal({ logs }) {
         {/* Log Content */}
         <div className="flex-1 p-4 overflow-y-auto font-mono text-xs text-slate-300 space-y-1.5 bg-black/60 custom-scrollbar">
           {logs.map((log) => {
-            let textClass = 'text-slate-300';
-            let bgClass = 'hover:bg-white/5';
-            let isAIOps = false;
+            const isWarning = log.text.includes('[Warning]');
+            const isError = log.text.includes('[Error]');
+            const isAI = log.text.includes('[AI-Ops]');
 
-            if (log.text.includes('Warning') || log.text.includes('WARN')) textClass = 'text-yellow-400';
-            if (log.text.includes('Error') || log.text.includes('ERROR')) textClass = 'text-red-400';
-            if (log.text.includes('[AI-Ops]')) {
-              textClass = 'text-emerald-300 font-medium';
-              bgClass = 'bg-emerald-500/10 border border-emerald-500/20';
-              isAIOps = true;
-            }
-            
             return (
-              <div key={log.id} className={`flex gap-3 leading-relaxed p-1.5 rounded group ${bgClass}`}>
-                <span className="text-cyan-500/70 shrink-0 select-none">[{log.time}]</span>
-                <div className="flex-1 flex flex-col sm:flex-row sm:items-start justify-between gap-2">
-                  <span className={`${textClass} break-all flex-1`}>{log.text}</span>
-                  {isAIOps && (
-                    <button 
-                      onClick={() => handleSolveClick(log.text)}
-                      className="shrink-0 flex items-center gap-1.5 px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded-md font-bold transition-all shadow-[0_0_10px_rgba(16,185,129,0.3)] hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] active:scale-95"
-                    >
-                      <Lightbulb size={14} />
-                      ÇÖZ
-                    </button>
-                  )}
-                </div>
+              <div key={log.id} className="font-mono text-sm break-all flex group">
+                <span className="text-slate-500 mr-3 select-none flex-shrink-0">[{log.time}]</span>
+                <span className={`
+                  flex-1
+                  ${isWarning ? 'text-yellow-400' : ''}
+                  ${isError ? 'text-red-400 font-bold' : ''}
+                  ${isAI ? 'text-emerald-400/90 italic border-l-2 border-emerald-500/50 pl-2 ml-1 bg-emerald-500/5 py-1' : 'text-slate-300'}
+                `}>
+                  {log.text}
+                </span>
               </div>
             );
           })}
@@ -117,14 +92,6 @@ export default function LogTerminal({ logs }) {
           <div ref={logEndRef} />
         </div>
       </div>
-
-      <SolveModal 
-        isOpen={!!solveData} 
-        onClose={() => setSolveData(null)}
-        ns={solveData?.ns || ''}
-        pod={solveData?.pod || ''}
-        errorMsg={solveData?.err || ''}
-      />
     </>
   );
 }
