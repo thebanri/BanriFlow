@@ -144,7 +144,7 @@ export default function AIChatPanel({ activeIncident, onClose }) {
                       <Terminal size={14} /> <span>AI Execution Terminal</span>
                       {!activeStream.isDone && <Loader2 size={12} className="animate-spin ml-auto text-emerald-500" />}
                     </div>
-                    <pre className="whitespace-pre-wrap break-all leading-relaxed custom-scrollbar max-h-64 overflow-y-auto">
+                    <pre className="whitespace-pre-wrap break-words leading-loose tracking-wide text-sm custom-scrollbar max-h-64 overflow-y-auto text-emerald-400/90 font-mono mt-2">
                       {activeStream.output}
                     </pre>
                   </div>
