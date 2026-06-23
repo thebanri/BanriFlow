@@ -75,10 +75,13 @@ Hata: %s`, namespace, actualPod, errMsg)
 	logCmd := exec.CommandContext(ctx, "kubectl", "logs", actualPod, "-n", namespace, "--all-containers", "--tail=20")
 	logOut, _ := logCmd.CombinedOutput()
 	logStr := strings.TrimSpace(string(logOut))
-	if len(logStr) > 0 && len(logStr) < 2000 {
-		prompt += fmt.Sprintf("\n\nPod Logları (Son 20 Satır):\n%s", logStr)
-	} else if len(logStr) >= 2000 {
-		prompt += fmt.Sprintf("\n\nPod Logları (Son 20 Satır):\n%s", logStr[:2000]+" ...[TRUNCATED]")
+	if len(logStr) > 0 {
+		prompt += "\n\nÖNEMLİ NOT: Kullanıcı senden loglara bakmanı isterse veya CrashLoopBackOff gibi log gerektiren bir hata varsa KESİNLİKLE 'ben log okuyamam' DEME! Çünkü Pod'un logları arka planda otomatik olarak çekilip aşağıya EKLENMİŞTİR! Bu logları okuyarak (örneğin hatalı komutu veya eksik argümanı bularak) doğrudan bir 'kubectl patch deployment' çözüm komutu üretebilirsin."
+		if len(logStr) < 2000 {
+			prompt += fmt.Sprintf("\n\n--- POD LOGLARI (Son 20 Satır) ---\n%s\n---------------------------------", logStr)
+		} else {
+			prompt += fmt.Sprintf("\n\n--- POD LOGLARI (Son 20 Satır) ---\n%s\n---------------------------------", logStr[:2000]+" ...[TRUNCATED]")
+		}
 	}
 
 	if userInput != "" {
