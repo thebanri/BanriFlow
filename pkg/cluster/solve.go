@@ -35,13 +35,15 @@ SADECE KOMUTU YAZ! (Markdown backtick kullanma, sadece saf komut)
 ÇOK ÖNEMLİ KURALLAR:
 1. KESİNLİKLE "<" veya ">" gibi Bash yönlendirme operatörlerini (yer tutucu olarak bile olsa) KULLANMA! (Örn: <KULLANICI_ADI> YAZMA, yerine dummy-user yaz).
 2. Tırnak işaretlerini (", ') doğru ve güvenli kullan.
+3. KUBERNETES KURALI: Çalışan bir Pod'un container listesini "kubectl patch pod" ile doğrudan güncelleyemezsin (Forbidden hatası verir). Pod'lar genelde Deployment vb. tarafından yönetilir.
+4. ÇÖZÜLEMEYEN SORUNLAR: Eğer hata "ImagePullBackOff" gibi senin doğrudan çözemeyeceğin (doğru imaj adını veya şifreyi bilmediğin) bir durumsa, "kubectl" ile sistemi bozmaya çalışmak YERİNE, kullanıcıya ne yapması gerektiğini söyleyen bir "echo" komutu üret.
+Örnek: echo "İmaj bulunamadı veya yetkiniz yok. Lütfen doğru imaj etiketini kontrol edin veya 'kubectl create secret docker-registry' ile kimlik bilgisi ekleyip Deployment'ı güncelleyin."
 
 Namespace: %s
 Pod: %s
 Hata: %s
 
-Eğer sorun ImagePullBackOff ise, örneğin secret oluştur veya image adını düzeltmek için patch komutu ver.
-Sadece kesin emin olduğun bir çözüm komutu üret.`, namespace, pod, errMsg)
+Sadece kesin emin olduğun ve hatasız çalışacak bir BASH komutu üret.`, namespace, pod, errMsg)
 
 	completion, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt, llms.WithTemperature(0.1))
 	if err != nil {
