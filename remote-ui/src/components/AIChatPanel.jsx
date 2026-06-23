@@ -3,7 +3,7 @@ import { Bot, X, Lightbulb, Terminal, Loader2, Play, CheckCircle } from 'lucide-
 
 export default function AIChatPanel({ activeIncident, onClose }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeStream, setActiveStream] = useState(null); // { pod, output, isDone }
+  const [streams, setStreams] = useState([]); // Array of { id, pod, output, isDone, isSolved, isUser }
   const [inputText, setInputText] = useState('');
   const bottomRef = useRef(null);
 
@@ -11,8 +11,8 @@ export default function AIChatPanel({ activeIncident, onClose }) {
   useEffect(() => {
     if (activeIncident) {
       setIsOpen(true);
-      // Reset stream if opening a new incident
-      setActiveStream(null);
+      // Reset streams if opening a new incident
+      setStreams([]);
     }
   }, [activeIncident]);
 
@@ -20,7 +20,7 @@ export default function AIChatPanel({ activeIncident, onClose }) {
     if (bottomRef.current && isOpen) {
       bottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [isOpen, activeStream]);
+  }, [isOpen, streams]);
 
   const handleClose = () => {
     setIsOpen(false);
@@ -31,14 +31,15 @@ export default function AIChatPanel({ activeIncident, onClose }) {
     if (!activeIncident) return;
     const { ns, pod, err } = activeIncident;
     
-    // Append the user input to the chat history visually if provided
+    const newStreamId = Date.now();
+    let initialOutput = "Starting automated resolution...\n";
+    
+    // Add user message block if provided
     if (customInput) {
-      // You could append it to a messages array if you have one, 
-      // but for now we just show the stream output responding to it
-      setActiveStream({ pod, output: `>> Sen: ${customInput}\nStarting automated resolution...\n`, isDone: false, isSolved: false });
-    } else {
-      setActiveStream({ pod, output: "Starting automated resolution...\n", isDone: false, isSolved: false });
+      setStreams(prev => [...prev, { id: Date.now() + 1, isUser: true, text: customInput }]);
     }
+    
+    setStreams(prev => [...prev, { id: newStreamId, pod, output: initialOutput, isDone: false, isSolved: false }]);
     
     const url = `http://${window.location.hostname}:3005/api/solve/stream?ns=${ns}&pod=${pod}&err=${encodeURIComponent(err)}&userInput=${encodeURIComponent(customInput)}`;
     const eventSource = new EventSource(url);
@@ -46,25 +47,27 @@ export default function AIChatPanel({ activeIncident, onClose }) {
     eventSource.onmessage = (e) => {
       const data = e.data;
       if (data === '[DONE]') {
-        setActiveStream(prev => prev ? { ...prev, isDone: true } : prev);
+        setStreams(prev => prev.map(s => s.id === newStreamId ? { ...s, isDone: true } : s));
         eventSource.close();
         return;
       }
       if (data === '[SOLVED]') {
-        setActiveStream(prev => prev ? { ...prev, isSolved: true } : prev);
+        setStreams(prev => prev.map(s => s.id === newStreamId ? { ...s, isSolved: true } : s));
         return;
       }
-      setActiveStream(prev => prev ? { ...prev, output: prev.output + data + "\n" } : prev);
+      setStreams(prev => prev.map(s => s.id === newStreamId ? { ...s, output: s.output + data + "\n" } : s));
     };
 
     eventSource.onerror = () => {
-      setActiveStream(prev => prev ? { ...prev, output: prev.output + `\n❌ Connection error or stream closed prematurely.`, isDone: true } : prev);
+      setStreams(prev => prev.map(s => s.id === newStreamId ? { ...s, output: s.output + `\n❌ Connection error or stream closed prematurely.`, isDone: true } : s));
       eventSource.close();
     };
   };
 
+  const isAnyStreamActive = streams.some(s => !s.isDone && !s.isUser);
+
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && inputText.trim() !== '') {
+    if (e.key === 'Enter' && inputText.trim() !== '' && !isAnyStreamActive) {
       handleSolve(inputText.trim());
       setInputText('');
     }
@@ -124,38 +127,47 @@ export default function AIChatPanel({ activeIncident, onClose }) {
                   
                   <button 
                     onClick={() => handleSolve('')}
-                    disabled={activeStream && !activeStream.isDone}
+                    disabled={isAnyStreamActive}
                     className={`mt-4 flex w-full justify-center items-center gap-2 px-3 py-2 text-white rounded-lg text-sm font-bold transition-all ${
-                      (activeStream && !activeStream.isDone) 
+                      isAnyStreamActive 
                         ? 'bg-slate-700 cursor-not-allowed opacity-50' 
                         : 'bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 shadow-[0_0_15px_rgba(16,185,129,0.4)] hover:shadow-[0_0_25px_rgba(16,185,129,0.6)] active:scale-95'
                     }`}
                   >
-                    <Play fill="currentColor" size={14} /> {(activeStream && !activeStream.isDone) ? 'İŞLEM SÜRÜYOR...' : 'TESPİTİ UYGULA VE DOĞRULA'}
+                    <Play fill="currentColor" size={14} /> {isAnyStreamActive ? 'İŞLEM SÜRÜYOR...' : 'TESPİTİ UYGULA VE DOĞRULA'}
                   </button>
                 </div>
               </div>
 
-              {/* Active Terminal Stream */}
-              {activeStream && (
-                <div className="flex flex-col gap-3 justify-end ml-10">
-                  <div className="bg-black border border-emerald-500/30 rounded-2xl rounded-tr-sm p-4 shadow-md text-xs font-mono text-emerald-400 w-full overflow-hidden relative">
-                    <div className="flex items-center gap-2 mb-2 text-slate-500 border-b border-slate-800 pb-2">
-                      <Terminal size={14} /> <span>AI Execution Terminal</span>
-                      {!activeStream.isDone && <Loader2 size={12} className="animate-spin ml-auto text-emerald-500" />}
+              {/* Chat History & Terminals */}
+              {streams.map((stream) => (
+                <div key={stream.id} className="flex flex-col gap-3 justify-end ml-10">
+                  {stream.isUser ? (
+                    <div className="bg-emerald-500/20 border border-emerald-500/50 rounded-2xl rounded-tr-sm p-3 text-sm text-emerald-100 shadow-md self-end max-w-[90%]">
+                      <span className="font-bold text-emerald-400 text-xs mb-1 block">Sen:</span>
+                      {stream.text}
                     </div>
-                    <pre className="whitespace-pre-wrap break-words leading-loose tracking-wide text-sm custom-scrollbar max-h-64 overflow-y-auto text-emerald-400/90 font-mono mt-2">
-                      {activeStream.output}
-                    </pre>
-                  </div>
-                  
-                  {activeStream.isSolved && (
-                    <div className="bg-emerald-500/10 border border-emerald-500 text-emerald-400 rounded-xl p-3 flex items-center justify-center gap-2 text-sm font-bold shadow-[0_0_15px_rgba(16,185,129,0.2)]">
-                      <CheckCircle size={18} /> PROBLEM SOLVED
-                    </div>
+                  ) : (
+                    <>
+                      <div className="bg-black border border-emerald-500/30 rounded-2xl rounded-tr-sm p-4 shadow-md text-xs font-mono text-emerald-400 w-full overflow-hidden relative">
+                        <div className="flex items-center gap-2 mb-2 text-slate-500 border-b border-slate-800 pb-2">
+                          <Terminal size={14} /> <span>AI Execution Terminal</span>
+                          {!stream.isDone && <Loader2 size={12} className="animate-spin ml-auto text-emerald-500" />}
+                        </div>
+                        <pre className="whitespace-pre-wrap break-words leading-loose tracking-wide text-sm custom-scrollbar max-h-64 overflow-y-auto text-emerald-400/90 font-mono mt-2">
+                          {stream.output}
+                        </pre>
+                      </div>
+                      
+                      {stream.isSolved && (
+                        <div className="bg-emerald-500/10 border border-emerald-500 text-emerald-400 rounded-xl p-3 flex items-center justify-center gap-2 text-sm font-bold shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+                          <CheckCircle size={18} /> PROBLEM SOLVED
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
-              )}
+              ))}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-slate-500 text-sm">
@@ -173,7 +185,7 @@ export default function AIChatPanel({ activeIncident, onClose }) {
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={activeIncident ? "Yapay zekaya direkt emir ver... (örn: şu imajı kur)" : "İşlem yapmak için bir olay seçin..."}
-            disabled={!activeIncident || (activeStream && !activeStream.isDone)}
+            disabled={!activeIncident || isAnyStreamActive}
             className="flex-1 bg-slate-800/50 border border-slate-700 focus:border-emerald-500 rounded-xl px-4 py-3 text-sm text-slate-200 outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           />
         </div>
