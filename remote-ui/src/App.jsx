@@ -15,20 +15,24 @@ function App() {
   const [solveData, setSolveData] = useState(null);
 
   useEffect(() => {
-    // Fetch static topology directly from the Go API server on port 3005
-    const apiUrl = `http://${window.location.hostname}:3005/api/topology`;
-    axios.get(apiUrl)
-      .then(res => {
-        if (res.data && typeof res.data === 'object' && !res.data.error) {
-          setGraphData({
-            nodes: res.data.nodes || [],
-            links: res.data.links || []
-          });
-        }
-      })
-      .catch(err => {
-        console.warn("Could not fetch topology", err);
-      });
+    const fetchTopology = () => {
+      const apiUrl = `http://${window.location.hostname}:3005/api/topology`;
+      axios.get(apiUrl)
+        .then(res => {
+          if (res.data && typeof res.data === 'object' && !res.data.error) {
+            setGraphData({
+              nodes: res.data.nodes || [],
+              links: res.data.links || []
+            });
+          }
+        })
+        .catch(err => {
+          console.warn("Could not fetch topology", err);
+        });
+    };
+
+    fetchTopology(); // Initial fetch
+    const topoInterval = setInterval(fetchTopology, 3000); // Auto-refresh every 3 seconds
 
     // Fetch Historical Logs
     axios.get(`http://${window.location.hostname}:3005/api/logs/history`)
@@ -60,6 +64,7 @@ function App() {
     };
 
     return () => {
+      clearInterval(topoInterval);
       eventSource.close();
     };
   }, []);
