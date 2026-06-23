@@ -116,19 +116,27 @@ export default function TopologyGraph({ data, onNodeClick }) {
         currentY += Math.max(1, connectedPods.length) * 150 + 50;
       });
 
-      // Layout Standalone Pods
+      // Layout Standalone Pods (Scattered in a grid)
       const standalonePods = pods.filter(p => !placedPodIds.has(p.id));
-      standalonePods.forEach(pod => {
+      if (standalonePods.length > 0) currentY += 50; // padding
+
+      standalonePods.forEach((pod, idx) => {
+        const col = idx % 3;
+        const row = Math.floor(idx / 3);
         newNodes.push({
           id: pod.id,
           type: 'asciiNode',
-          position: { x: 50, y: currentY },
+          position: { x: 50 + col * 280, y: currentY + row * 150 },
           parentNode: `ns-${ns}`,
           extent: 'parent',
           data: { ...pod },
         });
-        currentY += 150;
       });
+
+      if (standalonePods.length > 0) {
+        maxCols = Math.max(maxCols, 3);
+        currentY += Math.ceil(standalonePods.length / 3) * 150 + 50;
+      }
 
       // Calculate Parent Box Size
       const boxWidth = (maxCols * 300) + 150;
@@ -138,7 +146,7 @@ export default function TopologyGraph({ data, onNodeClick }) {
         id: `ns-${ns}`,
         type: 'namespaceNode',
         position: { x: cumulativeX, y: 0 },
-        style: { width: boxWidth, height: boxHeight },
+        style: { width: boxWidth, height: boxHeight, zIndex: -1 },
         data: { label: ns },
       });
 
