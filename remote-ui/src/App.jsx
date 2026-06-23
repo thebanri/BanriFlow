@@ -86,7 +86,7 @@ function App() {
       </div>
 
       {/* Right Hamburger Menu Panel */}
-      <RightMenu isOpen={isRightMenuOpen} onClose={() => setIsRightMenuOpen(false)} selectedNode={selectedNode} />
+      <RightMenu isOpen={isRightMenuOpen} onClose={() => setIsRightMenuOpen(false)} selectedNode={selectedNode} logs={logs} />
 
       {/* Bottom Log Terminal */}
       <div className="absolute bottom-6 left-6 right-6 z-10">
