@@ -197,16 +197,6 @@ export default function TopologyGraph({ data, onNodeClick }) {
     []
   );
 
-  const onNodesChange = useCallback(
-    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
-    []
-  );
-  
-  const onEdgesChange = useCallback(
-    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
-    []
-  );
-
   return (
     <div className="w-full h-full">
       <ReactFlow
