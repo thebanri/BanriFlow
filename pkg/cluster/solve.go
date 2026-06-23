@@ -51,6 +51,16 @@ Namespace: %s
 Pod: %s
 Hata: %s`, namespace, pod, errMsg)
 
+	// Try to fetch last 20 lines of logs to give AI more context
+	logCmd := exec.CommandContext(ctx, "kubectl", "logs", pod, "-n", namespace, "--all-containers", "--tail=20")
+	logOut, _ := logCmd.CombinedOutput()
+	logStr := strings.TrimSpace(string(logOut))
+	if len(logStr) > 0 && len(logStr) < 2000 {
+		prompt += fmt.Sprintf("\n\nPod Logları (Son 20 Satır):\n%s", logStr)
+	} else if len(logStr) >= 2000 {
+		prompt += fmt.Sprintf("\n\nPod Logları (Son 20 Satır):\n%s", logStr[:2000]+" ...[TRUNCATED]")
+	}
+
 	if userInput != "" {
 		prompt += fmt.Sprintf("\n\nÖZEL KULLANICI TALİMATI: %s\nYukarıdaki hatayı çözerken bu kullanıcının verdiği kesin talimatı HARFİYEN uygula! Kullanıcı bir imaj adı verirse Deployment veya ReplicaSet'i set image ile doğrudan değiştir.", userInput)
 	}
