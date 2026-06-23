@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -63,9 +64,13 @@ func RemoveClient(c chan string) {
 
 // SaveEvent appends a new event to the log file AND broadcasts it
 func SaveEvent(text string) {
+	// SSE stream'in (EventSource) bozulmaması için \n ve \r karakterlerini temizle
+	cleanText := strings.ReplaceAll(text, "\n", " ")
+	cleanText = strings.ReplaceAll(cleanText, "\r", "")
+
 	ev := EventLog{
 		Timestamp: time.Now(),
-		Text:      text,
+		Text:      cleanText,
 	}
 	b, err := json.Marshal(ev)
 	if err != nil {
