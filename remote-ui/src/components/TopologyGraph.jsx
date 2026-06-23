@@ -224,7 +224,10 @@ export default function TopologyGraph({ data, onNodeClick }) {
       if (isOverlapping) {
         const origPos = dragStartPositions.current[node.id];
         if (origPos) {
-          setNodes(nds => nds.map(n => n.id === node.id ? { ...n, position: origPos } : n));
+          // Use setTimeout to ensure our revert runs AFTER React Flow's internal state update
+          setTimeout(() => {
+            setNodes(nds => nds.map(n => n.id === node.id ? { ...n, position: origPos } : n));
+          }, 10);
         }
       }
     }
