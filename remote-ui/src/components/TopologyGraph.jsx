@@ -165,6 +165,7 @@ export default function TopologyGraph({ data, onNodeClick }) {
         position: { x: cumulativeX, y: 0 },
         style: { width: boxWidth, height: boxHeight, zIndex: -1 },
         data: { label: ns },
+        draggable: false, // Kesin çözüm: Kutuları sabitle!
       });
 
       cumulativeX += boxWidth + 100; // Add padding between namespaces
@@ -196,42 +197,15 @@ export default function TopologyGraph({ data, onNodeClick }) {
     []
   );
 
-  const onNodeDragStart = useCallback((event, node) => {
-    if (node.type === 'namespaceNode') {
-      dragStartPositions.current[node.id] = { ...node.position };
-    }
-  }, []);
-
-  const onNodeDragStop = useCallback((event, node) => {
-    if (node.type === 'namespaceNode') {
-      const isOverlapping = nodes.some(n => {
-        if (n.id === node.id || n.type !== 'namespaceNode') return false;
-        
-        const padding = 20; // 20px safe zone
-        const nLeft = n.position.x - padding;
-        const nRight = n.position.x + (n.style?.width || 0) + padding;
-        const nTop = n.position.y - padding;
-        const nBottom = n.position.y + (n.style?.height || 0) + padding;
-
-        const nodeLeft = node.position.x;
-        const nodeRight = node.position.x + (node.style?.width || 0);
-        const nodeTop = node.position.y;
-        const nodeBottom = node.position.y + (node.style?.height || 0);
-
-        return !(nRight < nodeLeft || nLeft > nodeRight || nBottom < nodeTop || nTop > nodeBottom);
-      });
-
-      if (isOverlapping) {
-        const origPos = dragStartPositions.current[node.id];
-        if (origPos) {
-          // Use setTimeout to ensure our revert runs AFTER React Flow's internal state update
-          setTimeout(() => {
-            setNodes(nds => nds.map(n => n.id === node.id ? { ...n, position: origPos } : n));
-          }, 10);
-        }
-      }
-    }
-  }, [nodes]);
+  const onNodesChange = useCallback(
+    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    []
+  );
+  
+  const onEdgesChange = useCallback(
+    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    []
+  );
 
   return (
     <div className="w-full h-full">
@@ -240,8 +214,6 @@ export default function TopologyGraph({ data, onNodeClick }) {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeDragStart={onNodeDragStart}
-        onNodeDragStop={onNodeDragStop}
         proOptions={{ hideAttribution: true }}
         onNodeClick={(_, node) => {
           if (node.type !== 'namespaceNode') onNodeClick(node.data);
