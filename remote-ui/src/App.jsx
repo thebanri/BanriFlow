@@ -3,7 +3,7 @@ import { Menu, TerminalSquare } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import RightMenu from './components/RightMenu';
 import LogTerminal from './components/LogTerminal';
-import Topology3D from './components/Topology3D';
+import TopologyGraph from './components/TopologyGraph';
 import axios from 'axios';
 
 function App() {
@@ -60,9 +60,9 @@ function App() {
         <Menu className="text-cyan-400" size={24} />
       </button>
 
-      {/* Center 3D Topology */}
+      {/* Center ASCII Topology */}
       <div className="absolute inset-0 z-0">
-        <Topology3D data={graphData} onNodeClick={setSelectedNode} />
+        <TopologyGraph data={graphData} onNodeClick={setSelectedNode} />
       </div>
 
       {/* Left Details Panel */}
