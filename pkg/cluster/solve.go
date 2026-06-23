@@ -97,4 +97,5 @@ Sadece kesin emin olduğun ve hatasız çalışacak bir BASH komutu üret.`, nam
 	}
 	
 	sendMsg("🏁 Süreç tamamlandı.")
+	sendMsg("[DONE]")
 }

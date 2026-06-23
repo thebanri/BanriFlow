@@ -26,47 +26,32 @@ export default function AIChatPanel({ activeIncident, onClose }) {
     if (onClose) onClose();
   };
 
-  const handleSolve = async () => {
+  const handleSolve = () => {
     if (!activeIncident) return;
     const { ns, pod, err } = activeIncident;
     
-    setActiveStream({ pod, output: "Starting automated resolution...\n", isDone: false });
+    setActiveStream({ pod, output: "Starting automated resolution...\n", isDone: false, isSolved: false });
     
-    try {
-      const response = await fetch(`http://${window.location.hostname}:3005/api/solve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ namespace: ns, pod: pod, err_msg: err })
-      });
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder('utf-8');
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          setActiveStream(prev => ({ ...prev, isDone: true }));
-          break;
-        }
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.replace('data: ', '');
-            if (data === '[DONE]') {
-               setActiveStream(prev => ({ ...prev, isDone: true }));
-               break;
-            }
-            if (data === '[SOLVED]') {
-               setActiveStream(prev => ({ ...prev, isSolved: true }));
-               continue;
-            }
-            setActiveStream(prev => ({ ...prev, output: prev.output + data + "\n" }));
-          }
-        }
+    const eventSource = new EventSource(`http://${window.location.hostname}:3005/api/solve/stream?ns=${ns}&pod=${pod}&err=${encodeURIComponent(err)}`);
+    
+    eventSource.onmessage = (e) => {
+      const data = e.data;
+      if (data === '[DONE]') {
+        setActiveStream(prev => prev ? { ...prev, isDone: true } : prev);
+        eventSource.close();
+        return;
       }
-    } catch (error) {
-      setActiveStream(prev => ({ ...prev, output: prev.output + `\n❌ Request failed: ${error.message}`, isDone: true }));
-    }
+      if (data === '[SOLVED]') {
+        setActiveStream(prev => prev ? { ...prev, isSolved: true } : prev);
+        return;
+      }
+      setActiveStream(prev => prev ? { ...prev, output: prev.output + data + "\n" } : prev);
+    };
+
+    eventSource.onerror = () => {
+      setActiveStream(prev => prev ? { ...prev, output: prev.output + `\n❌ Connection error or stream closed prematurely.`, isDone: true } : prev);
+      eventSource.close();
+    };
   };
 
   if (!isOpen && !activeIncident) {
