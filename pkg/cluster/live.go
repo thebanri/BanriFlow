@@ -57,6 +57,15 @@ func StartGlobalEventWatcher(ctx context.Context, aiProvider string) error {
 
 				// If it's a Warning, ask AI for a solution
 				if k8sEvent.Type == "Warning" {
+					// Check if the Pod still exists before processing the warning.
+					// This prevents ghost logs for pods that were already deleted or fixed.
+					if k8sEvent.InvolvedObject.Kind == "Pod" {
+						pod, err := clientset.CoreV1().Pods(k8sEvent.InvolvedObject.Namespace).Get(ctx, k8sEvent.InvolvedObject.Name, metav1.GetOptions{})
+						if err != nil || pod.DeletionTimestamp != nil {
+							continue // Pod is deleted or being deleted, ignore this trailing event
+						}
+					}
+
 					cacheKey := k8sEvent.Message
 					if cachedSol, exists := aiSolutionCache.Load(cacheKey); exists {
 						solutionStr := cachedSol.(string)
