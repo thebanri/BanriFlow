@@ -82,25 +82,40 @@ export default function TopologyGraph({ data, onNodeClick }) {
       
       const placedPodIds = new Set();
       
-      // Layout Services and their connected Pods
+      const treeServices = [];
+      const standaloneServices = [];
+
+      // Identify tree services vs standalone services
       services.forEach(svc => {
-        // Find connected pods
+        const connectedLinks = (data.links || []).filter(l => l.source === svc.id || (l.source.id && l.source.id === svc.id));
+        if (connectedLinks.length > 0) {
+          treeServices.push(svc);
+        } else {
+          standaloneServices.push(svc);
+        }
+      });
+      
+      // Layout Tree Services and their connected Pods
+      treeServices.forEach(svc => {
         const connectedLinks = (data.links || []).filter(l => l.source === svc.id || (l.source.id && l.source.id === svc.id));
         const connectedPodIds = connectedLinks.map(l => typeof l.target === 'object' ? l.target.id : l.target);
         const connectedPods = pods.filter(p => connectedPodIds.includes(p.id));
+        
+        // Only place pods that haven't been placed yet by another service
+        const unplacedPods = connectedPods.filter(p => !placedPodIds.has(p.id));
         
         // Place Service on left
         newNodes.push({
           id: svc.id,
           type: 'asciiNode',
-          position: { x: 50, y: currentY + (connectedPods.length > 0 ? (connectedPods.length * 150) / 2 - 75 : 0) },
+          position: { x: 50, y: currentY + (Math.max(1, unplacedPods.length) * 150) / 2 - 75 },
           parentNode: `ns-${ns}`,
           extent: 'parent',
           data: { ...svc },
         });
 
         // Place connected Pods on right, stacking upwards/downwards
-        connectedPods.forEach((pod, idx) => {
+        unplacedPods.forEach((pod, idx) => {
           newNodes.push({
             id: pod.id,
             type: 'asciiNode',
@@ -112,30 +127,32 @@ export default function TopologyGraph({ data, onNodeClick }) {
           placedPodIds.add(pod.id);
         });
 
-        if (connectedPods.length > 0) maxCols = 2;
-        currentY += Math.max(1, connectedPods.length) * 150 + 50;
+        if (unplacedPods.length > 0) maxCols = 2;
+        currentY += Math.max(1, unplacedPods.length) * 150 + 50;
       });
 
-      // Layout Standalone Pods (Scattered in a grid)
+      // Layout Standalone Nodes (Pods + Services with 0 connections) in a grid
       const standalonePods = pods.filter(p => !placedPodIds.has(p.id));
-      if (standalonePods.length > 0) currentY += 50; // padding
+      const standaloneNodes = [...standaloneServices, ...standalonePods];
 
-      standalonePods.forEach((pod, idx) => {
+      if (standaloneNodes.length > 0) currentY += 50; // padding
+
+      standaloneNodes.forEach((node, idx) => {
         const col = idx % 3;
         const row = Math.floor(idx / 3);
         newNodes.push({
-          id: pod.id,
+          id: node.id,
           type: 'asciiNode',
           position: { x: 50 + col * 280, y: currentY + row * 150 },
           parentNode: `ns-${ns}`,
           extent: 'parent',
-          data: { ...pod },
+          data: { ...node },
         });
       });
 
-      if (standalonePods.length > 0) {
+      if (standaloneNodes.length > 0) {
         maxCols = Math.max(maxCols, 3);
-        currentY += Math.ceil(standalonePods.length / 3) * 150 + 50;
+        currentY += Math.ceil(standaloneNodes.length / 3) * 150 + 50;
       }
 
       // Calculate Parent Box Size
