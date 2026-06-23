@@ -39,7 +39,9 @@ SADECE KOMUTU YAZ! (Markdown backtick kullanma, sadece saf komut)
 ÇOK ÖNEMLİ KURALLAR:
 1. KESİNLİKLE "<" veya ">" gibi Bash yönlendirme operatörlerini (yer tutucu olarak bile olsa) KULLANMA! (Örn: <KULLANICI_ADI> YAZMA, yerine dummy-user yaz).
 2. Tırnak işaretlerini (", ') doğru ve güvenli kullan.
-3. KUBERNETES KURALI: Çalışan bir Pod üzerinde 'kubectl patch pod' veya 'kubectl edit pod' KESİNLİKLE KULLANMA! Bir pod'un 'image' özelliği dışındaki hiçbir alanını (command, resources, env) doğrudan değiştiremezsin (Forbidden hatası verir). Değişiklik yapmak istiyorsan her zaman o Pod'u yöneten DEPLOYMENT'i yamala (patch/set). (Deployment adı genellikle Pod adından sondaki 2 hash silinerek bulunur, örn: pod "crash-app-123-456" ise deployment adı "crash-app"tir).
+3. KUBERNETES KURALI: Çalışan bir Pod üzerinde 'kubectl patch pod' veya 'kubectl edit pod' KESİNLİKLE KULLANMA! Bir pod'un 'image' özelliği dışındaki hiçbir alanını (command, resources, env) doğrudan değiştiremezsin (Forbidden hatası verir). Değişiklik yapmak istiyorsan her zaman o Pod'u yöneten DEPLOYMENT'i yamala (patch/set).
+   - YANLIŞ: kubectl patch pod ornek-pod-1234 -p ...
+   - DOĞRU: kubectl patch deployment ornek -p ... (Deployment adı genellikle Pod adından sondaki 2 hash silinerek bulunur, örn: pod "crash-app-123-456" ise deployment adı "crash-app"tir).
 4. ÇÖZÜLEMEYEN SORUNLAR: Eğer hata "ImagePullBackOff" ise ve sorunun ne olduğundan %100 emin değilsen "echo" komutu üret. FAKAT, eğer imaj adında ÇOK BARİZ bir yazım hatası varsa (örneğin nginxx, ubutnu, rediss) bunu otomatik olarak bilinen public imaj adıyla (nginx, ubuntu, redis) değiştiren bir komut üretebilirsin.
 5. CONTAINER ADI BİLİNMİYORSA: Eger "kubectl set image" komutu kullanacaksan ve container adını bilmiyorsan, container adı yerine "*" kullanarak tüm container'ları hedefle. (Örn: kubectl set image deployment/ornek-uyg *=yeni-imaj:latest -n namespace)
 
@@ -86,21 +88,30 @@ Hata: %s`, namespace, pod, errMsg)
 			sendMsg(fmt.Sprintf("Çıktı: %s", string(out)))
 		}
 
-		sendMsg("⏳ Değişikliklerin etki etmesi bekleniyor (5 saniye)...")
-		time.Sleep(5 * time.Second)
-		sendMsg("🔍 Durum doğrulanıyor...")
-
-		checkCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", pod, "-n", namespace, "-o", "jsonpath={.status.phase}")
-		statusOut, checkErr := checkCmd.CombinedOutput()
-		status := strings.TrimSpace(string(statusOut))
-
-		if checkErr == nil && (status == "Running" || status == "Succeeded") {
-			sendMsg("🎉 DOĞRULANDI: Sorun çözüldü! Pod durumu: " + status)
-			sendMsg("[SOLVED]")
-		} else if checkErr == nil {
-			sendMsg("⚠️ KISMİ BAŞARI: Komut çalıştı ancak Pod henüz tam iyileşmedi. Mevcut durum: " + status)
+		if strings.HasPrefix(cmdStr, "echo") {
+			sendMsg("ℹ️ Bu sorun doğrudan çözülemediği için (veya bilgi amaçlı) sadece öneri sunuldu.")
 		} else {
-			sendMsg("⚠️ DOĞRULAMA BAŞARISIZ: Pod durumu alınamadı (belki yeniden oluşturuluyor veya silindi).")
+			sendMsg("⏳ Değişikliklerin etki etmesi bekleniyor (5 saniye)...")
+			time.Sleep(5 * time.Second)
+			sendMsg("🔍 Durum doğrulanıyor...")
+
+			checkCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", pod, "-n", namespace, "-o", "jsonpath={.status.phase} {.status.containerStatuses[0].state.waiting.reason}")
+			statusOut, checkErr := checkCmd.CombinedOutput()
+			status := strings.TrimSpace(string(statusOut))
+
+			if checkErr != nil {
+				// If pod is deleted or not found, it means the deployment is rolling out a new pod.
+				sendMsg("🎉 DOĞRULANDI: Eski pod silindi ve yenisi oluşturuluyor! (Deployment güncellendi)")
+				sendMsg("[SOLVED]")
+			} else if strings.Contains(status, "CrashLoopBackOff") || strings.Contains(status, "ImagePullBackOff") || strings.Contains(status, "ErrImagePull") {
+				sendMsg("⚠️ KISMİ BAŞARI: Komut çalıştı ancak Pod hala hatalı. Mevcut durum: " + status)
+			} else if strings.Contains(status, "Running") || strings.Contains(status, "Succeeded") || strings.Contains(status, "Pending") {
+				// Pending is fine for now, it means it's starting. Running without CrashLoop is also fine.
+				sendMsg("🎉 DOĞRULANDI: Sorun çözüldü veya çözülüyor! Pod durumu: " + status)
+				sendMsg("[SOLVED]")
+			} else {
+				sendMsg("⚠️ DOĞRULAMA BELİRSİZ: Mevcut durum: " + status)
+			}
 		}
 	}
 	
