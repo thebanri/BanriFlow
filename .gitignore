@@ -12,3 +12,9 @@ BanriFlow
 # Environments
 .env
 .banriflow.env
+
+# Frontend
+node_modules/
+remote-ui/node_modules/
+dist/
+ui-dist/
