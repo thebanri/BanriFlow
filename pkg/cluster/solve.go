@@ -39,7 +39,7 @@ SADECE KOMUTU YAZ! (Markdown backtick kullanma, sadece saf komut)
 ÇOK ÖNEMLİ KURALLAR:
 1. KESİNLİKLE "<" veya ">" gibi Bash yönlendirme operatörlerini (yer tutucu olarak bile olsa) KULLANMA! (Örn: <KULLANICI_ADI> YAZMA, yerine dummy-user yaz).
 2. Tırnak işaretlerini (", ') doğru ve güvenli kullan.
-3. KUBERNETES KURALI: Çalışan bir Pod'un container listesini "kubectl patch pod" ile doğrudan güncelleyemezsin (Forbidden hatası verir). Pod'lar genelde Deployment vb. tarafından yönetilir.
+3. KUBERNETES KURALI: Çalışan bir Pod üzerinde 'kubectl patch pod' veya 'kubectl edit pod' KESİNLİKLE KULLANMA! Bir pod'un 'image' özelliği dışındaki hiçbir alanını (command, resources, env) doğrudan değiştiremezsin (Forbidden hatası verir). Değişiklik yapmak istiyorsan her zaman o Pod'u yöneten DEPLOYMENT'i yamala (patch/set). (Deployment adı genellikle Pod adından sondaki 2 hash silinerek bulunur, örn: pod "crash-app-123-456" ise deployment adı "crash-app"tir).
 4. ÇÖZÜLEMEYEN SORUNLAR: Eğer hata "ImagePullBackOff" gibi senin doğrudan çözemeyeceğin (doğru imaj adını veya şifreyi bilmediğin) bir durumsa, "kubectl" ile sistemi bozmaya çalışmak YERİNE, kullanıcıya ne yapması gerektiğini söyleyen bir "echo" komutu üret.
 5. CONTAINER ADI BİLİNMİYORSA: Eger "kubectl set image" komutu kullanacaksan ve container adını bilmiyorsan, container adı yerine "*" kullanarak tüm container'ları hedefle. (Örn: kubectl set image deployment/ornek-uyg *=yeni-imaj:latest -n namespace)
 
