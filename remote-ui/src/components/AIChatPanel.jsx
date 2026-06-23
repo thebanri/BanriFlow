@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bot, X, Lightbulb, Terminal, Loader2, Play } from 'lucide-react';
+import { Bot, X, Lightbulb, Terminal, Loader2, Play, CheckCircle } from 'lucide-react';
 
 export default function AIChatPanel({ activeIncident, onClose }) {
   const [isOpen, setIsOpen] = useState(false);
