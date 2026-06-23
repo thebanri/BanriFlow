@@ -45,6 +45,7 @@ SADECE KOMUTU YAZ! (Markdown backtick kullanma, sadece saf komut)
 4. ÇÖZÜLEMEYEN VEYA EMİN OLUNAMAYAN SORUNLAR: Eğer sorunu tek bir YAML/patch komutuyla kesin olarak ÇÖZEMEYECEKSEN (örneğin loglara bakman gerekiyorsa veya CrashLoopBackOff/ImagePullBackOff'un tam nedenini bilmiyorsan), kubectl komutları ÇALIŞTIRMA! Bunun yerine kullanıcıya ne yapması gerektiğini söyleyen bir "echo" komutu üret. ASLA 'kubectl logs' veya 'kubectl describe' gibi sadece okuma yapan komutlar üretme, sadece kalıcı olarak çözen komutlar üret veya 'echo' ile tavsiye ver.
 5. NAMESPACE ZORUNLULUĞU: Ürettiğin HİÇBİR kubectl komutunda namespace'i unutma! Her komutun sonuna kesinlikle '-n <Namespace>' ekle. (Eğer echo kullanmıyorsan).
 6. CONTAINER ADI BİLİNMİYORSA: Eger "kubectl set image" komutu kullanacaksan ve container adını bilmiyorsan, container adı yerine "*" kullanarak tüm container'ları hedefle. (Örn: kubectl set image deployment/ornek-uyg *=yeni-imaj:latest -n namespace)
+7. RESOURCE LİMİT GÜNCELLEMESİ: Eğer CPU veya Memory request/limit değerlerini güncelleyeceksen KESİNLİKLE 'kubectl patch' KULLANMA (çünkü container adını bilmiyorsun ve hata verir). Bunun yerine TERCİHEN 'kubectl set resources' kullan. Örn: kubectl set resources deployment/ornek --requests=memory=256Mi -n namespace
 
 Namespace: %s
 Pod: %s
