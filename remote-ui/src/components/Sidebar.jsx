@@ -62,8 +62,8 @@ export default function Sidebar({ node, onClose }) {
           
           <p className="text-sm text-slate-300 leading-relaxed">
             {isError 
-              ? `CrashLoopBackOff Tespit Edildi! Bu container ${node.restarts} kez çöktü. Öneri: Liveness/Readiness probe'larını kontrol et ve ortam değişkenlerini (ENV) doğrula.` 
-              : "Kritik bir stabilite sorunu tespit edilmedi. NetworkPolicy kurallarının doğru izole edildiğinden emin ol."}
+              ? (node.restarts > 0 ? `Dikkat! Bu container ${node.restarts} kez yeniden başlatıldı. ${node.details} Hatanın tam nedeni için Terminal'den logları incele veya AI'a çözdür.` : `Container stabil değil veya hazır duruma (Ready) geçemedi. ${node.details}`)
+              : "Kritik bir stabilite sorunu tespit edilmedi. Sistem sağlıklı çalışıyor."}
           </p>
         </div>
       </div>

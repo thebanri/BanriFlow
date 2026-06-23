@@ -4,12 +4,18 @@ import { TerminalSquare, Lightbulb, Bot } from 'lucide-react';
 export default function LogTerminal({ logs, onSolve }) {
   const [height, setHeight] = useState(192); // Default tailwind h-48 = 192px
   const isDragging = useRef(false);
+  const logContainerRef = useRef(null);
   const logEndRef = useRef(null);
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom only if user is already near the bottom
   useEffect(() => {
-    if (logEndRef.current) {
-      logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (logContainerRef.current) {
+      const container = logContainerRef.current;
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 50;
+      
+      if (isNearBottom && logEndRef.current) {
+        logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
     }
   }, [logs]);
 
@@ -68,7 +74,10 @@ export default function LogTerminal({ logs, onSolve }) {
         </div>
 
         {/* Log Content */}
-        <div className="flex-1 p-4 overflow-y-auto font-mono text-xs text-slate-300 space-y-1.5 bg-black/60 custom-scrollbar">
+        <div 
+          ref={logContainerRef}
+          className="flex-1 p-4 overflow-y-auto font-mono text-xs text-slate-300 space-y-1.5 bg-black/60 custom-scrollbar"
+        >
           {logs.map((log) => {
             const isWarning = log.text.includes('[Warning]');
             const isError = log.text.includes('[Error]');
