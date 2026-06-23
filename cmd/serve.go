@@ -101,7 +101,10 @@ var serveCmd = &cobra.Command{
 			os.Exit(0)
 		}
 
-		// 3. Web Server setup
+		// Start global Kubernetes Event watcher to persist events
+		go cluster.StartGlobalEventWatcher(context.Background())
+
+		// Web Server setup
 		app := fiber.New(fiber.Config{
 			DisableStartupMessage: true,
 		})
@@ -117,6 +120,12 @@ var serveCmd = &cobra.Command{
 			return c.JSON(data)
 		})
 
+		app.Get("/api/logs/history", func(c *fiber.Ctx) error {
+			// Get events from the last 7 days
+			events := cluster.GetRecentEvents(7)
+			return c.JSON(events)
+		})
+
 		app.Get("/api/events", func(c *fiber.Ctx) error {
 			c.Set("Content-Type", "text/event-stream")
 			c.Set("Cache-Control", "no-cache")
@@ -125,10 +134,11 @@ var serveCmd = &cobra.Command{
 
 			c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
 				ch := make(chan string)
+				cluster.AddClient(ch)
+				defer cluster.RemoveClient(ch)
+
 				ctx, cancel := context.WithCancel(c.Context())
 				defer cancel()
-
-				go cluster.WatchEvents(ctx, ch)
 
 				for {
 					select {

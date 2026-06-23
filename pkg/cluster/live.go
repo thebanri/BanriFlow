@@ -14,8 +14,8 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// WatchEvents connects to the cluster and streams events to the provided channel
-func WatchEvents(ctx context.Context, ch chan<- string) error {
+// StartGlobalEventWatcher connects to the cluster and watches events continuously.
+func StartGlobalEventWatcher(ctx context.Context) error {
 	var kubeconfig string
 	if home := homedir.HomeDir(); home != "" {
 		kubeconfig = filepath.Join(home, ".kube", "config")
@@ -43,11 +43,13 @@ func WatchEvents(ctx context.Context, ch chan<- string) error {
 			return nil
 		case event, ok := <-watcher.ResultChan():
 			if !ok {
+				// Re-establish connection if channel closes
 				return nil
 			}
 			k8sEvent, ok := event.Object.(*corev1.Event)
 			if ok {
-				ch <- fmt.Sprintf("[%s] %s/%s: %s", k8sEvent.Type, k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
+				msg := fmt.Sprintf("[%s] %s/%s: %s", k8sEvent.Type, k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
+				SaveEvent(msg)
 			}
 		}
 	}

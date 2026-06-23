@@ -25,14 +25,25 @@ function App() {
             nodes: res.data.nodes || [],
             links: res.data.links || []
           });
-          setLogs(prev => [...prev, { id: Date.now(), time: new Date().toLocaleTimeString(), text: "[SYSTEM] Cluster topology loaded successfully." }]);
-        } else {
-          setLogs(prev => [...prev, { id: Date.now(), time: new Date().toLocaleTimeString(), text: "[ERROR] Unexpected topology response." }]);
         }
       })
       .catch(err => {
-        setLogs(prev => [...prev, { id: Date.now(), time: new Date().toLocaleTimeString(), text: "[ERROR] Could not fetch live topology." }]);
+        console.warn("Could not fetch topology", err);
       });
+
+    // Fetch Historical Logs
+    axios.get(`http://${window.location.hostname}:3005/api/logs/history`)
+      .then(res => {
+        if (Array.isArray(res.data)) {
+          const historicalLogs = res.data.map(ev => ({
+            id: ev.timestamp,
+            time: new Date(ev.timestamp).toLocaleTimeString(),
+            text: ev.text
+          }));
+          setLogs(historicalLogs.slice(-100)); // Load up to last 100 historical logs
+        }
+      })
+      .catch(err => console.warn("No historical logs found"));
 
     // Start Live SSE Event Stream for Kubernetes Events (e.g. Pod Crashes)
     const eventSource = new EventSource(`http://${window.location.hostname}:3005/api/events`);
