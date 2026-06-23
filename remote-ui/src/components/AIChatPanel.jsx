@@ -4,6 +4,7 @@ import { Bot, X, Lightbulb, Terminal, Loader2, Play } from 'lucide-react';
 export default function AIChatPanel({ activeIncident, onClose }) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeStream, setActiveStream] = useState(null); // { pod, output, isDone }
+  const [inputText, setInputText] = useState('');
   const bottomRef = useRef(null);
 
   // Auto-open when a new incident is passed via click in LogTerminal
@@ -26,13 +27,21 @@ export default function AIChatPanel({ activeIncident, onClose }) {
     if (onClose) onClose();
   };
 
-  const handleSolve = () => {
+  const handleSolve = (customInput = '') => {
     if (!activeIncident) return;
     const { ns, pod, err } = activeIncident;
     
-    setActiveStream({ pod, output: "Starting automated resolution...\n", isDone: false, isSolved: false });
+    // Append the user input to the chat history visually if provided
+    if (customInput) {
+      // You could append it to a messages array if you have one, 
+      // but for now we just show the stream output responding to it
+      setActiveStream({ pod, output: `>> Sen: ${customInput}\nStarting automated resolution...\n`, isDone: false, isSolved: false });
+    } else {
+      setActiveStream({ pod, output: "Starting automated resolution...\n", isDone: false, isSolved: false });
+    }
     
-    const eventSource = new EventSource(`http://${window.location.hostname}:3005/api/solve/stream?ns=${ns}&pod=${pod}&err=${encodeURIComponent(err)}`);
+    const url = `http://${window.location.hostname}:3005/api/solve/stream?ns=${ns}&pod=${pod}&err=${encodeURIComponent(err)}&userInput=${encodeURIComponent(customInput)}`;
+    const eventSource = new EventSource(url);
     
     eventSource.onmessage = (e) => {
       const data = e.data;
@@ -52,6 +61,13 @@ export default function AIChatPanel({ activeIncident, onClose }) {
       setActiveStream(prev => prev ? { ...prev, output: prev.output + `\n❌ Connection error or stream closed prematurely.`, isDone: true } : prev);
       eventSource.close();
     };
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && inputText.trim() !== '') {
+      handleSolve(inputText.trim());
+      setInputText('');
+    }
   };
 
   if (!isOpen && !activeIncident) {
@@ -106,14 +122,17 @@ export default function AIChatPanel({ activeIncident, onClose }) {
                   </div>
                   <p className="leading-relaxed whitespace-pre-wrap">{activeIncident.err}</p>
                   
-                  {!activeStream && (
-                    <button 
-                      onClick={handleSolve}
-                      className="mt-4 flex w-full justify-center items-center gap-2 px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-lg text-sm font-bold shadow-[0_0_15px_rgba(16,185,129,0.4)] hover:shadow-[0_0_25px_rgba(16,185,129,0.6)] transition-all active:scale-95"
-                    >
-                      <Play fill="currentColor" size={14} /> TESPİTİ UYGULA VE DOĞRULA
-                    </button>
-                  )}
+                  <button 
+                    onClick={() => handleSolve('')}
+                    disabled={activeStream && !activeStream.isDone}
+                    className={`mt-4 flex w-full justify-center items-center gap-2 px-3 py-2 text-white rounded-lg text-sm font-bold transition-all ${
+                      (activeStream && !activeStream.isDone) 
+                        ? 'bg-slate-700 cursor-not-allowed opacity-50' 
+                        : 'bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 shadow-[0_0_15px_rgba(16,185,129,0.4)] hover:shadow-[0_0_25px_rgba(16,185,129,0.6)] active:scale-95'
+                    }`}
+                  >
+                    <Play fill="currentColor" size={14} /> {(activeStream && !activeStream.isDone) ? 'İŞLEM SÜRÜYOR...' : 'TESPİTİ UYGULA VE DOĞRULA'}
+                  </button>
                 </div>
               </div>
 
@@ -146,13 +165,16 @@ export default function AIChatPanel({ activeIncident, onClose }) {
           <div ref={bottomRef} />
         </div>
         
-        {/* Chat Input placeholder */}
+        {/* Chat Input */}
         <div className="p-4 border-t border-slate-700/50 bg-slate-900/80 backdrop-blur-md flex gap-2">
           <input 
             type="text" 
-            placeholder="AI Olay Merkezindesiniz..." 
-            className="flex-1 bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-300 cursor-not-allowed opacity-50"
-            disabled
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={activeIncident ? "Yapay zekaya direkt emir ver... (örn: şu imajı kur)" : "İşlem yapmak için bir olay seçin..."}
+            disabled={!activeIncident || (activeStream && !activeStream.isDone)}
+            className="flex-1 bg-slate-800/50 border border-slate-700 focus:border-emerald-500 rounded-xl px-4 py-3 text-sm text-slate-200 outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           />
         </div>
       </div>

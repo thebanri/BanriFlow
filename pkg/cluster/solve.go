@@ -13,14 +13,18 @@ import (
 )
 
 // AutoFixStream takes the K8s error, asks the AI for a fixing bash command, executes it, and streams the process.
-func AutoFixStream(ctx context.Context, provider, namespace, pod, errMsg string, w *bufio.Writer) {
+func AutoFixStream(ctx context.Context, provider, namespace, pod, errMsg, userInput string, w *bufio.Writer) {
 	sendMsg := func(text string) {
 		fmt.Fprintf(w, "data: %s\n\n", text)
 		w.Flush()
 	}
 
 	sendMsg(fmt.Sprintf("🔄 Hedef Pod: %s/%s", namespace, pod))
-	sendMsg("🧠 Yapay zeka sorunu analiz ediyor ve çözüm üretiyor...")
+	if userInput != "" {
+		sendMsg(fmt.Sprintf("🧑‍💻 Kullanıcı Talimatı İşleniyor: %s", userInput))
+	} else {
+		sendMsg("🧠 Yapay zeka sorunu analiz ediyor ve çözüm üretiyor...")
+	}
 
 	llm, err := analyzer.GetLLM(ctx, provider)
 	if err != nil {
@@ -37,13 +41,16 @@ SADECE KOMUTU YAZ! (Markdown backtick kullanma, sadece saf komut)
 2. Tırnak işaretlerini (", ') doğru ve güvenli kullan.
 3. KUBERNETES KURALI: Çalışan bir Pod'un container listesini "kubectl patch pod" ile doğrudan güncelleyemezsin (Forbidden hatası verir). Pod'lar genelde Deployment vb. tarafından yönetilir.
 4. ÇÖZÜLEMEYEN SORUNLAR: Eğer hata "ImagePullBackOff" gibi senin doğrudan çözemeyeceğin (doğru imaj adını veya şifreyi bilmediğin) bir durumsa, "kubectl" ile sistemi bozmaya çalışmak YERİNE, kullanıcıya ne yapması gerektiğini söyleyen bir "echo" komutu üret.
-Örnek: echo "İmaj bulunamadı veya yetkiniz yok. Lütfen doğru imaj etiketini kontrol edin veya 'kubectl create secret docker-registry' ile kimlik bilgisi ekleyip Deployment'ı güncelleyin."
 
 Namespace: %s
 Pod: %s
-Hata: %s
+Hata: %s`, namespace, pod, errMsg)
 
-Sadece kesin emin olduğun ve hatasız çalışacak bir BASH komutu üret.`, namespace, pod, errMsg)
+	if userInput != "" {
+		prompt += fmt.Sprintf("\n\nÖZEL KULLANICI TALİMATI: %s\nYukarıdaki hatayı çözerken bu kullanıcının verdiği kesin talimatı HARFİYEN uygula! Kullanıcı bir imaj adı verirse Deployment veya ReplicaSet'i set image ile doğrudan değiştir.", userInput)
+	}
+
+	prompt += "\n\nSadece kesin emin olduğun ve hatasız çalışacak bir BASH komutu üret."
 
 	completion, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt, llms.WithTemperature(0.1))
 	if err != nil {

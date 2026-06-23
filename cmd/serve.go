@@ -155,6 +155,7 @@ var serveCmd = &cobra.Command{
 			ns := c.Query("ns")
 			pod := c.Query("pod")
 			errMsg := c.Query("err")
+			userInput := c.Query("userInput")
 
 			c.Set("Content-Type", "text/event-stream")
 			c.Set("Cache-Control", "no-cache")
@@ -162,7 +163,7 @@ var serveCmd = &cobra.Command{
 			c.Set("Transfer-Encoding", "chunked")
 
 			c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
-				cluster.AutoFixStream(context.Background(), serveProvider, ns, pod, errMsg, w)
+				cluster.AutoFixStream(context.Background(), serveProvider, ns, pod, errMsg, userInput, w)
 			})
 			return nil
 		})
