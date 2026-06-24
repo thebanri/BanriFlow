@@ -89,7 +89,11 @@ function App() {
 
       {/* Left Details Panel */}
       <div className={`absolute top-28 left-6 z-10 transition-transform duration-500 ${selectedNode ? 'translate-x-0' : '-translate-x-[150%]'}`}>
-        <Sidebar node={selectedNode} onClose={() => setSelectedNode(null)} />
+        <Sidebar 
+          node={selectedNode} 
+          onClose={() => setSelectedNode(null)} 
+          onSolve={(ns, pod, err) => setSolveData({ ns, pod, err })} 
+        />
       </div>
 
       {/* Right Hamburger Menu Panel */}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { X, Activity, Cpu, HardDrive, AlertTriangle, ShieldCheck } from 'lucide-react';
 
-export default function Sidebar({ node, onClose }) {
+export default function Sidebar({ node, onClose, onSolve }) {
   if (!node) return null;
 
   const isError = node.status === 'error';
@@ -60,11 +60,20 @@ export default function Sidebar({ node, onClose }) {
             <h3 className={`font-bold text-sm ${isError ? 'text-red-400' : 'text-cyan-400'}`}>AI Güvenlik & Stabilite</h3>
           </div>
           
-          <p className="text-sm text-slate-300 leading-relaxed">
+          <p className="text-sm text-slate-300 leading-relaxed mb-3">
             {isError 
               ? (node.restarts > 0 ? `Dikkat! Bu container ${node.restarts} kez yeniden başlatıldı. ${node.details} Hatanın tam nedeni için Terminal'den logları incele veya AI'a çözdür.` : `Container stabil değil veya hazır duruma (Ready) geçemedi. ${node.details}`)
               : "Kritik bir stabilite sorunu tespit edilmedi. Sistem sağlıklı çalışıyor."}
           </p>
+
+          {isError && onSolve && (
+            <button 
+              onClick={() => onSolve(node.namespace || 'default', node.name, `Node ${node.name} is in error state: ${node.details} with ${node.restarts} restarts.`)}
+              className="w-full flex items-center justify-center gap-2 bg-red-500/20 hover:bg-red-500/40 text-red-300 px-4 py-2 rounded-lg text-xs font-bold border border-red-500/40 shadow-[0_0_10px_rgba(239,68,68,0.2)] hover:shadow-[0_0_15px_rgba(239,68,68,0.4)] transition-all active:scale-95"
+            >
+              🤖 AI'A ÇÖZDÜR
+            </button>
+          )}
         </div>
       </div>
     </div>
