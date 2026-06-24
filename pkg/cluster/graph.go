@@ -65,7 +65,8 @@ func FetchGraphData(ctx context.Context) (*GraphData, error) {
 		
 		if len(p.Status.ContainerStatuses) > 0 {
 			restarts = p.Status.ContainerStatuses[0].RestartCount
-			if restarts > 2 || !p.Status.ContainerStatuses[0].Ready {
+			// Sadece güncel olarak Ready değilse kırmızı yak. Geçmiş restart'lar podu ebediyen kırmızı yapmasın.
+			if !p.Status.ContainerStatuses[0].Ready {
 				status = "error" // Node will be red
 				
 				state := p.Status.ContainerStatuses[0].State
