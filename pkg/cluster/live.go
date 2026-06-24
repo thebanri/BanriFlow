@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,61 +36,69 @@ func StartGlobalEventWatcher(ctx context.Context, aiProvider string) error {
 		return err
 	}
 
-	watcher, err := clientset.CoreV1().Events("").Watch(ctx, metav1.ListOptions{})
-	if err != nil {
-		return err
-	}
-	defer watcher.Stop()
-
 	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case event, ok := <-watcher.ResultChan():
-			if !ok {
-				// Re-establish connection if channel closes
-				return nil
-			}
-			k8sEvent, ok := event.Object.(*corev1.Event)
-			if ok {
-				msg := fmt.Sprintf("[%s] %s/%s: %s", k8sEvent.Type, k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
-				SaveEvent(msg)
+		watcher, err := clientset.CoreV1().Events("").Watch(ctx, metav1.ListOptions{})
+		if err != nil {
+			time.Sleep(5 * time.Second)
+			continue
+		}
 
-				// If it's a Warning, ask AI for a solution
-				if k8sEvent.Type == "Warning" {
-					// Check if the Pod still exists before processing the warning.
-					// This prevents ghost logs for pods that were already deleted or fixed.
-					if k8sEvent.InvolvedObject.Kind == "Pod" {
-						pod, err := clientset.CoreV1().Pods(k8sEvent.InvolvedObject.Namespace).Get(ctx, k8sEvent.InvolvedObject.Name, metav1.GetOptions{})
-						if err != nil || pod.DeletionTimestamp != nil {
-							continue // Pod is deleted or being deleted, ignore this trailing event
-						}
+		func() {
+			defer watcher.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case event, ok := <-watcher.ResultChan():
+					if !ok {
+						// Watch channel closed (normal K8s timeout). Break inner loop to recreate watcher.
+						return
 					}
+					k8sEvent, ok := event.Object.(*corev1.Event)
+					if ok {
+						msg := fmt.Sprintf("[%s] %s/%s: %s", k8sEvent.Type, k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
+						SaveEvent(msg)
 
-					cacheKey := k8sEvent.Message
-					if cachedSol, exists := aiSolutionCache.Load(cacheKey); exists {
-						solutionStr := cachedSol.(string)
-						if solutionStr != "PENDING" {
-							aiMsg := fmt.Sprintf("[AI-Ops] 💡 Çözüm Önerisi (%s/%s): %s", k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, solutionStr)
-							SaveEvent(aiMsg)
-						}
-					} else {
-						// Mark as processed immediately to prevent duplicate requests while AI is thinking
-						aiSolutionCache.Store(cacheKey, "PENDING")
-
-						go func(ns, name, errMsg string) {
-							solution, err := analyzer.AskAIForLogSolution(context.Background(), aiProvider, errMsg)
-							if err == nil && solution != "" {
-								aiSolutionCache.Store(errMsg, solution) // Save the actual solution
-								aiMsg := fmt.Sprintf("[AI-Ops] 💡 Çözüm Önerisi (%s/%s): %s", ns, name, solution)
-								SaveEvent(aiMsg)
-							} else {
-								aiSolutionCache.Delete(errMsg) // Retry later if failed
+						// If it's a Warning, ask AI for a solution
+						if k8sEvent.Type == "Warning" {
+							// Check if the Pod still exists before processing the warning.
+							if k8sEvent.InvolvedObject.Kind == "Pod" {
+								pod, err := clientset.CoreV1().Pods(k8sEvent.InvolvedObject.Namespace).Get(ctx, k8sEvent.InvolvedObject.Name, metav1.GetOptions{})
+								if err != nil || pod.DeletionTimestamp != nil {
+									continue // Pod is deleted or being deleted, ignore
+								}
 							}
-						}(k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
+
+							cacheKey := k8sEvent.Message
+							if cachedSol, exists := aiSolutionCache.Load(cacheKey); exists {
+								solutionStr := cachedSol.(string)
+								if solutionStr != "PENDING" {
+									aiMsg := fmt.Sprintf("[AI-Ops] 💡 Çözüm Önerisi (%s/%s): %s", k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, solutionStr)
+									SaveEvent(aiMsg)
+								}
+							} else {
+								aiSolutionCache.Store(cacheKey, "PENDING")
+
+								go func(ns, name, errMsg string) {
+									solution, err := analyzer.AskAIForLogSolution(context.Background(), aiProvider, errMsg)
+									if err == nil && solution != "" {
+										aiSolutionCache.Store(errMsg, solution)
+										aiMsg := fmt.Sprintf("[AI-Ops] 💡 Çözüm Önerisi (%s/%s): %s", ns, name, solution)
+										SaveEvent(aiMsg)
+									} else {
+										aiSolutionCache.Delete(errMsg)
+									}
+								}(k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
+							}
+						}
 					}
 				}
 			}
+		}()
+
+		// If ctx is done, exit the outer loop as well
+		if ctx.Err() != nil {
+			return nil
 		}
 	}
 }
