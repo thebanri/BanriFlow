@@ -87,6 +87,7 @@ func StartGlobalEventWatcher(ctx context.Context, aiProvider string) error {
 										SaveEvent(aiMsg)
 									} else {
 										aiSolutionCache.Delete(errMsg)
+										fmt.Printf("⚠️ AI çözüm üretemedi (%s/%s): %v\n", ns, name, err)
 									}
 								}(k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
 							}

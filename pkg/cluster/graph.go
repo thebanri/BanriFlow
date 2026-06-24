@@ -61,10 +61,19 @@ func FetchGraphData(ctx context.Context) (*GraphData, error) {
 	for _, p := range pods.Items {
 		status := "ok"
 		restarts := int32(0)
+		details := fmt.Sprintf("Phase: %s", p.Status.Phase)
+		
 		if len(p.Status.ContainerStatuses) > 0 {
 			restarts = p.Status.ContainerStatuses[0].RestartCount
 			if restarts > 2 || !p.Status.ContainerStatuses[0].Ready {
 				status = "error" // Node will be red
+				
+				state := p.Status.ContainerStatuses[0].State
+				if state.Waiting != nil && state.Waiting.Reason != "" {
+					details = fmt.Sprintf("Durum: %s", state.Waiting.Reason)
+				} else if state.Terminated != nil && state.Terminated.Reason != "" {
+					details = fmt.Sprintf("Durum: %s", state.Terminated.Reason)
+				}
 			}
 		}
 
@@ -90,7 +99,7 @@ func FetchGraphData(ctx context.Context) (*GraphData, error) {
 			Restarts:  restarts,
 			CPU:       cpu,
 			Memory:    mem,
-			Details:   fmt.Sprintf("Phase: %s", p.Status.Phase),
+			Details:   details,
 		})
 	}
 
