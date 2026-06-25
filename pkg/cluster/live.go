@@ -82,6 +82,7 @@ func StartGlobalEventWatcher(ctx context.Context, aiProvider string) error {
 							} else {
 								// Mark as processed immediately to prevent duplicate requests while AI is thinking
 								aiSolutionCache.Store(cacheKey, "PENDING")
+								SaveEvent(fmt.Sprintf("[AI-Ops] ⚙️ Yapay zeka %s/%s için çözüm düşünüyor...", k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name))
 
 								go func(ns, name, errMsg string) {
 									solution, err := analyzer.AskAIForLogSolution(context.Background(), aiProvider, errMsg)
@@ -91,7 +92,7 @@ func StartGlobalEventWatcher(ctx context.Context, aiProvider string) error {
 										SaveEvent(aiMsg)
 									} else {
 										aiSolutionCache.Delete(errMsg) // Retry later if failed
-										fmt.Printf("⚠️ AI çözüm üretemedi (%s/%s): %v\n", ns, name, err)
+										SaveEvent(fmt.Sprintf("[AI-Ops] ⚠️ Yapay zeka çözüm üretemedi (%s/%s): %v", ns, name, err))
 									}
 								}(k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
 							}
