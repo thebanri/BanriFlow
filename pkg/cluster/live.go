@@ -3,18 +3,19 @@ package cluster
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/thebanri/BanriFlow/pkg/analyzer"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 	"sigs.k8s.io/yaml"
-	"github.com/thebanri/BanriFlow/pkg/analyzer"
-	"sync"
 )
 
 var aiSolutionCache sync.Map
@@ -84,8 +85,32 @@ func StartGlobalEventWatcher(ctx context.Context, aiProvider string) error {
 								aiSolutionCache.Store(cacheKey, "PENDING")
 								SaveEvent(fmt.Sprintf("[AI-Ops] ⚙️ Yapay zeka %s/%s için çözüm düşünüyor...", k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name))
 
-								go func(ns, name, errMsg string) {
-									solution, err := analyzer.AskAIForLogSolution(context.Background(), aiProvider, errMsg)
+								go func(ns, name, errMsg, kind string) {
+									var extraContext string
+									if kind == "Pod" {
+										// 1. Fetch Pod Logs
+										logCmd := exec.CommandContext(context.Background(), "bash", "-c", fmt.Sprintf("kubectl logs %s -n %s --all-containers --tail=30 || kubectl logs %s -n %s --all-containers --tail=30 --previous", name, ns, name, ns))
+										logOut, _ := logCmd.CombinedOutput()
+										if lgStr := strings.TrimSpace(string(logOut)); lgStr != "" {
+											extraContext += "--- POD LOGS ---\n" + lgStr + "\n"
+										}
+
+										// 2. Fetch Pod Events
+										eventsCmd := exec.CommandContext(context.Background(), "bash", "-c", fmt.Sprintf("kubectl get events -n %s --field-selector involvedObject.name=%s --sort-by='.metadata.creationTimestamp' | tail -n 5", ns, name))
+										eventsOut, _ := eventsCmd.CombinedOutput()
+										if evStr := strings.TrimSpace(string(eventsOut)); evStr != "" {
+											extraContext += "\n--- POD EVENTS ---\n" + evStr + "\n"
+										}
+
+										// 3. Fetch Container Specs (Images)
+										specCmd := exec.CommandContext(context.Background(), "kubectl", "get", "pod", name, "-n", ns, "-o", "jsonpath={range .spec.containers[*]}Container: {.name}, Image: {.image}\\n{end}")
+										specOut, _ := specCmd.CombinedOutput()
+										if spStr := strings.TrimSpace(string(specOut)); spStr != "" {
+											extraContext += "\n--- CONTAINER IMAGES ---\n" + spStr + "\n"
+										}
+									}
+
+									solution, err := analyzer.AskAIForLogSolution(context.Background(), aiProvider, errMsg, extraContext)
 									if err == nil && solution != "" {
 										aiSolutionCache.Store(errMsg, solution) // Save the actual solution
 										aiMsg := fmt.Sprintf("[AI-Ops] 💡 Çözüm Önerisi (%s/%s): %s", ns, name, solution)
@@ -94,7 +119,7 @@ func StartGlobalEventWatcher(ctx context.Context, aiProvider string) error {
 										aiSolutionCache.Delete(errMsg) // Retry later if failed
 										SaveEvent(fmt.Sprintf("[AI-Ops] ⚠️ Yapay zeka çözüm üretemedi (%s/%s): %v", ns, name, err))
 									}
-								}(k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
+								}(k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message, k8sEvent.InvolvedObject.Kind)
 							}
 						}
 					}

@@ -274,7 +274,7 @@ JSON format:
 	}, nil
 }
 
-func AskAIForLogSolution(ctx context.Context, provider string, logMessage string) (string, error) {
+func AskAIForLogSolution(ctx context.Context, provider string, logMessage string, extraContext string) (string, error) {
 	llm, err := GetLLM(ctx, provider)
 	if err != nil {
 		return "", err
@@ -285,7 +285,11 @@ Lütfen bu hatanın neden kaynaklandığını ve nasıl çözülebileceğini do�
 Eğer çözüm için basit bir kubectl komutu veya YAML düzeltmesi gerekiyorsa, bunu da belirt.
 Sadece çözüm önerisini yaz, selamlama veya gereksiz açıklamalar yapma.
 
-Log Mesajı: "%s"`, logMessage)
+Olay Mesajı: "%s"`, logMessage)
+
+	if extraContext != "" {
+		prompt += fmt.Sprintf("\n\nEk Teşhis Verileri (Loglar, Olaylar, İmajlar):\n%s", extraContext)
+	}
 
 	completion, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt,
 		llms.WithTemperature(0.2),
