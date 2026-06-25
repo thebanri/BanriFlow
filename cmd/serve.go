@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -110,7 +111,33 @@ var serveCmd = &cobra.Command{
 		})
 
 		app.Use(cors.New())
-		app.Use(logger.New())
+		app.Use(logger.New(logger.Config{
+			Format:     "{\"level\":\"HTTP_REQ\",\"time\":\"${time}\",\"status\":${status},\"method\":\"${method}\",\"path\":\"${path}\",\"latency\":\"${latency}\",\"error\":\"${error}\"}\n",
+			TimeFormat: time.RFC3339,
+			TimeZone:   "Local",
+		}))
+
+		// Endpoint to receive frontend errors
+		type ClientLog struct {
+			Message string `json:"message"`
+			Stack   string `json:"stack"`
+			URL     string `json:"url"`
+			Agent   string `json:"agent"`
+		}
+
+		app.Post("/api/logs/client", func(c *fiber.Ctx) error {
+			var cl ClientLog
+			if err := c.BodyParser(&cl); err != nil {
+				return c.Status(400).SendString("Invalid log format")
+			}
+			// Print in JSON format so it goes to stdout/daemon log cleanly
+			fmt.Printf("{\"level\":\"FRONTEND_ERROR\",\"time\":\"%s\",\"message\":%q,\"url\":%q,\"agent\":%q}\n",
+				time.Now().Format(time.RFC3339), cl.Message, cl.URL, cl.Agent)
+			if cl.Stack != "" {
+				fmt.Printf("{\"level\":\"FRONTEND_STACK\",\"stack\":%q}\n", cl.Stack)
+			}
+			return c.SendStatus(200)
+		})
 
 		app.Get("/api/topology", func(c *fiber.Ctx) error {
 			data, err := cluster.FetchGraphData(c.Context())
