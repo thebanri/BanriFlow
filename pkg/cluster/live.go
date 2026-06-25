@@ -18,6 +18,7 @@ import (
 )
 
 var aiSolutionCache sync.Map
+var processedEvents sync.Map
 
 // StartGlobalEventWatcher connects to the cluster and watches events continuously.
 func StartGlobalEventWatcher(ctx context.Context, aiProvider string) error {
@@ -56,6 +57,12 @@ func StartGlobalEventWatcher(ctx context.Context, aiProvider string) error {
 					}
 					k8sEvent, ok := event.Object.(*corev1.Event)
 					if ok {
+						// Eğer bu olayı daha önce logladıysak (UID kontrolü) atla, dejavu yaşatmasın.
+						if _, exists := processedEvents.Load(k8sEvent.UID); exists {
+							continue
+						}
+						processedEvents.Store(k8sEvent.UID, true)
+
 						msg := fmt.Sprintf("[%s] %s/%s: %s", k8sEvent.Type, k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
 						SaveEvent(msg)
 
