@@ -70,23 +70,20 @@ func StartGlobalEventWatcher(ctx context.Context, aiProvider string) error {
 							}
 
 							cacheKey := k8sEvent.Message
-							if cachedSol, exists := aiSolutionCache.Load(cacheKey); exists {
-								solutionStr := cachedSol.(string)
-								if solutionStr != "PENDING" {
-									aiMsg := fmt.Sprintf("[AI-Ops] 💡 Çözüm Önerisi (%s/%s): %s", k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, solutionStr)
-									SaveEvent(aiMsg)
-								}
+							if _, exists := aiSolutionCache.Load(cacheKey); exists {
+								// Already processed and suggested, do not spam the UI again
 							} else {
+								// Mark as processed immediately to prevent duplicate requests while AI is thinking
 								aiSolutionCache.Store(cacheKey, "PENDING")
 
 								go func(ns, name, errMsg string) {
 									solution, err := analyzer.AskAIForLogSolution(context.Background(), aiProvider, errMsg)
 									if err == nil && solution != "" {
-										aiSolutionCache.Store(errMsg, solution)
+										aiSolutionCache.Store(errMsg, solution) // Save the actual solution
 										aiMsg := fmt.Sprintf("[AI-Ops] 💡 Çözüm Önerisi (%s/%s): %s", ns, name, solution)
 										SaveEvent(aiMsg)
 									} else {
-										aiSolutionCache.Delete(errMsg)
+										aiSolutionCache.Delete(errMsg) // Retry later if failed
 										fmt.Printf("⚠️ AI çözüm üretemedi (%s/%s): %v\n", ns, name, err)
 									}
 								}(k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
