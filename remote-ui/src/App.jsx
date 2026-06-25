@@ -20,9 +20,18 @@ function App() {
       axios.get(apiUrl)
         .then(res => {
           if (res.data && typeof res.data === 'object' && !res.data.error) {
+            const newNodes = res.data.nodes || [];
             setGraphData({
-              nodes: res.data.nodes || [],
+              nodes: newNodes,
               links: res.data.links || []
+            });
+            
+            // Auto-close or update stale selected node
+            setSelectedNode(currentSelected => {
+              if (!currentSelected) return null;
+              const found = newNodes.find(n => n.id === currentSelected.id);
+              if (!found) return null; // Node was deleted
+              return found; // Return updated node data
             });
           }
         })

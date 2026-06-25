@@ -1,18 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bot, X, Lightbulb, Terminal, Loader2, Play, CheckCircle } from 'lucide-react';
+import { Bot, X, Terminal, Loader2, Play, CheckCircle, Maximize2, Minimize2 } from 'lucide-react';
 
 export default function AIChatPanel({ activeIncident, onClose }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [streams, setStreams] = useState([]); // Array of { id, pod, output, isDone, isSolved, isUser }
+  const [messages, setMessages] = useState([]); // { type: 'incident'|'stream'|'user', id, data }
   const [inputText, setInputText] = useState('');
+  const [isExpanded, setIsExpanded] = useState(false);
   const bottomRef = useRef(null);
 
-  // Auto-open when a new incident is passed via click in LogTerminal
+  // Auto-open when a new incident is passed via click
   useEffect(() => {
     if (activeIncident) {
       setIsOpen(true);
-      // Reset streams if opening a new incident
-      setStreams([]);
+      
+      // Check if this exact incident is already the last message to prevent duplicates
+      setMessages(prev => {
+        const lastMsg = prev[prev.length - 1];
+        if (lastMsg && lastMsg.type === 'incident' && lastMsg.data.err === activeIncident.err) {
+          return prev;
+        }
+        return [...prev, { type: 'incident', id: Date.now(), data: activeIncident }];
+      });
     }
   }, [activeIncident]);
 
@@ -20,26 +28,22 @@ export default function AIChatPanel({ activeIncident, onClose }) {
     if (bottomRef.current && isOpen) {
       bottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [isOpen, streams]);
+  }, [isOpen, messages]);
 
   const handleClose = () => {
     setIsOpen(false);
     if (onClose) onClose();
   };
 
-  const handleSolve = (customInput = '') => {
-    if (!activeIncident) return;
-    const { ns, pod, err } = activeIncident;
+  const handleSolve = (incidentData, customInput = '') => {
+    const { ns, pod, err } = incidentData;
     
-    const newStreamId = Date.now();
-    let initialOutput = "Starting automated resolution...\n";
-    
-    // Add user message block if provided
     if (customInput) {
-      setStreams(prev => [...prev, { id: Date.now() + 1, isUser: true, text: customInput }]);
+      setMessages(prev => [...prev, { type: 'user', id: Date.now(), text: customInput }]);
     }
     
-    setStreams(prev => [...prev, { id: newStreamId, pod, output: initialOutput, isDone: false, isSolved: false }]);
+    const newStreamId = Date.now() + 1;
+    setMessages(prev => [...prev, { type: 'stream', id: newStreamId, pod, output: "Starting automated resolution...\n", isDone: false, isSolved: false }]);
     
     const url = `http://${window.location.hostname}:3005/api/solve/stream?ns=${ns}&pod=${pod}&err=${encodeURIComponent(err)}&userInput=${encodeURIComponent(customInput)}`;
     const eventSource = new EventSource(url);
@@ -47,146 +51,160 @@ export default function AIChatPanel({ activeIncident, onClose }) {
     eventSource.onmessage = (e) => {
       const data = e.data;
       if (data === '[DONE]') {
-        setStreams(prev => prev.map(s => s.id === newStreamId ? { ...s, isDone: true } : s));
+        setMessages(prev => prev.map(m => m.id === newStreamId ? { ...m, isDone: true } : m));
         eventSource.close();
         return;
       }
       if (data === '[SOLVED]') {
-        setStreams(prev => prev.map(s => s.id === newStreamId ? { ...s, isSolved: true } : s));
+        setMessages(prev => prev.map(m => m.id === newStreamId ? { ...m, isSolved: true } : m));
         return;
       }
-      setStreams(prev => prev.map(s => s.id === newStreamId ? { ...s, output: s.output + data + "\n" } : s));
+      setMessages(prev => prev.map(m => m.id === newStreamId ? { ...m, output: m.output + data + "\n" } : m));
     };
 
     eventSource.onerror = () => {
-      setStreams(prev => prev.map(s => s.id === newStreamId ? { ...s, output: s.output + `\n❌ Connection error or stream closed prematurely.`, isDone: true } : s));
+      setMessages(prev => prev.map(m => m.id === newStreamId ? { ...m, output: m.output + `\n❌ Connection error or stream closed prematurely.`, isDone: true } : m));
       eventSource.close();
     };
   };
 
-  const isAnyStreamActive = streams.some(s => !s.isDone && !s.isUser);
+  const isAnyStreamActive = messages.some(m => m.type === 'stream' && !m.isDone);
+  const currentIncident = [...messages].reverse().find(m => m.type === 'incident')?.data;
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && inputText.trim() !== '' && !isAnyStreamActive) {
-      handleSolve(inputText.trim());
+    if (e.key === 'Enter' && inputText.trim() !== '' && !isAnyStreamActive && currentIncident) {
+      handleSolve(currentIncident, inputText.trim());
       setInputText('');
     }
   };
 
-  if (!isOpen && !activeIncident) {
-    return null; // Don't even show the bubble if no incident is active
+  if (!isOpen && !activeIncident && messages.length === 0) {
+    return null; 
   }
 
   return (
     <>
-      {/* Floating Bubble (if closed but there is an active incident) */}
-      {!isOpen && activeIncident && (
+      {/* Floating Bubble */}
+      {!isOpen && (
         <button 
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-[60] p-4 bg-emerald-500/20 backdrop-blur-md border border-emerald-500/50 text-emerald-400 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:bg-emerald-500/30 transition-all flex items-center justify-center group animate-bounce"
+          className="fixed bottom-6 right-6 z-[60] p-4 bg-emerald-500/20 backdrop-blur-md border border-emerald-500/50 text-emerald-400 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:bg-emerald-500/30 transition-all flex items-center justify-center group"
         >
           <Bot size={28} className="group-hover:scale-110 transition-transform" />
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center shadow-md border-2 border-slate-950">
-            1
-          </span>
         </button>
       )}
 
-      {/* Chat Panel */}
-      <div className={`fixed top-0 right-0 h-full w-full sm:w-[450px] glass border-l border-slate-700/50 shadow-2xl flex flex-col transform transition-transform duration-500 z-[60] ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+      {/* Floating Chatbox */}
+      <div className={`fixed bottom-6 right-6 z-[60] flex flex-col glass rounded-2xl border border-slate-700/50 shadow-2xl transition-all duration-300 transform origin-bottom-right ${isOpen ? 'scale-100 opacity-100' : 'scale-90 opacity-0 pointer-events-none'} ${isExpanded ? 'w-[800px] h-[80vh] sm:w-[60vw]' : 'w-[400px] h-[600px] max-w-[90vw] max-h-[80vh]'}`}>
+        
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-700/50 bg-slate-900/80 backdrop-blur-md">
+        <div className="flex items-center justify-between p-4 border-b border-slate-700/50 bg-slate-900/80 backdrop-blur-md rounded-t-2xl">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-emerald-500/20 rounded-lg text-emerald-400 border border-emerald-500/30">
-              <Bot size={24} />
+              <Bot size={20} />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-100">KubeSight AI</h2>
-              <p className="text-xs text-emerald-400/80 font-mono tracking-wider">ACTIVE INCIDENT RESPONSE</p>
+              <h2 className="text-base font-bold text-slate-100">AI Assistant</h2>
+              <p className="text-[10px] text-emerald-400/80 font-mono tracking-wider">DEVSEC-OPS COPILOT</p>
             </div>
           </div>
-          <button onClick={handleClose} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setIsExpanded(!isExpanded)} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors">
+              {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+            <button onClick={handleClose} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors">
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
-        {/* Chat Interface */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar bg-black/40">
-          {activeIncident ? (
-            <div className="flex flex-col gap-2">
-              {/* AI Message */}
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
-                  <Bot size={16} className="text-emerald-400" />
-                </div>
-                <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl rounded-tl-sm p-4 text-sm text-slate-300 shadow-md">
-                  <div className="font-mono text-[10px] text-cyan-400 mb-2 border-b border-slate-700/50 pb-1 inline-block">
-                    {activeIncident.ns}/{activeIncident.pod}
-                  </div>
-                  <p className="leading-relaxed whitespace-pre-wrap">{activeIncident.err}</p>
-                  
-                  <button 
-                    onClick={() => handleSolve('')}
-                    disabled={isAnyStreamActive}
-                    className={`mt-4 flex w-full justify-center items-center gap-2 px-3 py-2 text-white rounded-lg text-sm font-bold transition-all ${
-                      isAnyStreamActive 
-                        ? 'bg-slate-700 cursor-not-allowed opacity-50' 
-                        : 'bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 shadow-[0_0_15px_rgba(16,185,129,0.4)] hover:shadow-[0_0_25px_rgba(16,185,129,0.6)] active:scale-95'
-                    }`}
-                  >
-                    <Play fill="currentColor" size={14} /> {isAnyStreamActive ? 'İŞLEM SÜRÜYOR...' : 'TESPİTİ UYGULA VE DOĞRULA'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Chat History & Terminals */}
-              {streams.map((stream) => (
-                <div key={stream.id} className="flex flex-col gap-3 justify-end ml-10">
-                  {stream.isUser ? (
-                    <div className="bg-emerald-500/20 border border-emerald-500/50 rounded-2xl rounded-tr-sm p-3 text-sm text-emerald-100 shadow-md self-end max-w-[90%]">
-                      <span className="font-bold text-emerald-400 text-xs mb-1 block">Sen:</span>
-                      {stream.text}
-                    </div>
-                  ) : (
-                    <>
-                      <div className="bg-black border border-emerald-500/30 rounded-2xl rounded-tr-sm p-4 shadow-md text-xs font-mono text-emerald-400 w-full overflow-hidden relative">
-                        <div className="flex items-center gap-2 mb-2 text-slate-500 border-b border-slate-800 pb-2">
-                          <Terminal size={14} /> <span>AI Execution Terminal</span>
-                          {!stream.isDone && <Loader2 size={12} className="animate-spin ml-auto text-emerald-500" />}
-                        </div>
-                        <pre className="whitespace-pre-wrap break-words leading-loose tracking-wide text-sm custom-scrollbar max-h-64 overflow-y-auto text-emerald-400/90 font-mono mt-2">
-                          {stream.output}
-                        </pre>
-                      </div>
-                      
-                      {stream.isSolved && (
-                        <div className="bg-emerald-500/10 border border-emerald-500 text-emerald-400 rounded-xl p-3 flex items-center justify-center gap-2 text-sm font-bold shadow-[0_0_15px_rgba(16,185,129,0.2)]">
-                          <CheckCircle size={18} /> PROBLEM SOLVED
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              ))}
+        {/* Chat History */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-black/40">
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-slate-500 text-sm gap-3">
+              <Bot size={32} className="text-slate-700" />
+              <p>Log terminalinden bir sorun seçin veya direkt soru sorun.</p>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-slate-500 text-sm">
-              Log terminalinden bir çözüm önerisi seçin.
-            </div>
+            messages.map((msg, index) => {
+              if (msg.type === 'incident') {
+                return (
+                  <div key={msg.id} className="flex gap-3 animate-in fade-in slide-in-from-bottom-2">
+                    <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 mt-1">
+                      <Bot size={14} className="text-emerald-400" />
+                    </div>
+                    <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl rounded-tl-sm p-3 text-sm text-slate-300 shadow-md w-[85%]">
+                      <div className="font-mono text-[10px] text-cyan-400 mb-2 border-b border-slate-700/50 pb-1 inline-block">
+                        {msg.data.ns}/{msg.data.pod}
+                      </div>
+                      <p className="leading-relaxed whitespace-pre-wrap text-xs">{msg.data.err}</p>
+                      
+                      {/* Show solve button only if it's the last incident and no active stream */}
+                      {index === messages.findLastIndex(m => m.type === 'incident') && (
+                        <button 
+                          onClick={() => handleSolve(msg.data, '')}
+                          disabled={isAnyStreamActive}
+                          className={`mt-3 flex w-full justify-center items-center gap-2 px-3 py-2 text-white rounded-lg text-xs font-bold transition-all ${
+                            isAnyStreamActive 
+                              ? 'bg-slate-700 cursor-not-allowed opacity-50' 
+                              : 'bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)] active:scale-95'
+                          }`}
+                        >
+                          <Play fill="currentColor" size={12} /> {isAnyStreamActive ? 'İŞLEM SÜRÜYOR...' : 'YAPAY ZEKAYA ÇÖZDÜR'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+
+              if (msg.type === 'user') {
+                return (
+                  <div key={msg.id} className="flex flex-col gap-1 items-end animate-in fade-in slide-in-from-bottom-2">
+                    <div className="bg-emerald-500/20 border border-emerald-500/50 rounded-2xl rounded-tr-sm p-3 text-sm text-emerald-100 shadow-md max-w-[85%]">
+                      {msg.text}
+                    </div>
+                  </div>
+                );
+              }
+
+              if (msg.type === 'stream') {
+                return (
+                  <div key={msg.id} className="flex flex-col gap-2 ml-11 animate-in fade-in slide-in-from-bottom-2">
+                    <div className="bg-[#0a0a0a] border border-emerald-500/30 rounded-xl p-3 shadow-md w-full relative group">
+                      <div className="flex items-center gap-2 mb-2 text-slate-500 border-b border-slate-800 pb-2 text-[10px] uppercase font-bold tracking-widest">
+                        <Terminal size={12} /> <span>AI Execution</span>
+                        {!msg.isDone && <Loader2 size={10} className="animate-spin ml-auto text-emerald-500" />}
+                      </div>
+                      <pre className="whitespace-pre-wrap break-words leading-loose tracking-wide text-[11px] custom-scrollbar max-h-64 overflow-y-auto text-emerald-400/90 font-mono mt-1">
+                        {msg.output}
+                      </pre>
+                    </div>
+                    
+                    {msg.isSolved && (
+                      <div className="bg-emerald-500/10 border border-emerald-500 text-emerald-400 rounded-lg p-2 flex items-center justify-center gap-2 text-xs font-bold shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+                        <CheckCircle size={14} /> PROBLEM SOLVED
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              return null;
+            })
           )}
           <div ref={bottomRef} />
         </div>
         
         {/* Chat Input */}
-        <div className="p-4 border-t border-slate-700/50 bg-slate-900/80 backdrop-blur-md flex gap-2">
+        <div className="p-3 border-t border-slate-700/50 bg-slate-900/80 backdrop-blur-md rounded-b-2xl">
           <input 
             type="text" 
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={activeIncident ? "Yapay zekaya direkt emir ver... (örn: şu imajı kur)" : "İşlem yapmak için bir olay seçin..."}
-            disabled={!activeIncident || isAnyStreamActive}
-            className="flex-1 bg-slate-800/50 border border-slate-700 focus:border-emerald-500 rounded-xl px-4 py-3 text-sm text-slate-200 outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            placeholder={currentIncident ? "Yapay zekaya direkt emir ver... (Enter)" : "Önce bir sorun seçin..."}
+            disabled={!currentIncident || isAnyStreamActive}
+            className="w-full bg-slate-800/50 border border-slate-700 focus:border-emerald-500 rounded-xl px-4 py-2.5 text-sm text-slate-200 outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           />
         </div>
       </div>
