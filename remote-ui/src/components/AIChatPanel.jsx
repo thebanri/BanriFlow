@@ -3,17 +3,33 @@ import { Bot, X, Terminal, Loader2, Play, CheckCircle, Maximize2, Minimize2 } fr
 
 export default function AIChatPanel({ activeIncident, onClose }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([]); // { type: 'incident'|'stream'|'user', id, data }
+  const [messages, setMessages] = useState(() => {
+    const saved = localStorage.getItem('banriflow_ai_chat');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Mark any interrupted streams as done so UI doesn't get stuck loading
+        return parsed.map(m => (m.type === 'stream' && !m.isDone) ? { ...m, isDone: true, output: m.output + '\n⚠️ [Sayfa yenilendiği için işlem koptu]' } : m);
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
   const [inputText, setInputText] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
   const bottomRef = useRef(null);
+
+  // Save messages to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('banriflow_ai_chat', JSON.stringify(messages));
+  }, [messages]);
 
   // Auto-open when a new incident is passed via click
   useEffect(() => {
     if (activeIncident) {
       setIsOpen(true);
       
-      // Check if this exact incident is already the last message to prevent duplicates
       setMessages(prev => {
         const lastMsg = prev[prev.length - 1];
         if (lastMsg && lastMsg.type === 'incident' && lastMsg.data.err === activeIncident.err) {
@@ -35,6 +51,11 @@ export default function AIChatPanel({ activeIncident, onClose }) {
     if (onClose) onClose();
   };
 
+  const handleClearHistory = () => {
+    setMessages([]);
+    localStorage.removeItem('banriflow_ai_chat');
+  };
+
   const handleSolve = (incidentData, customInput = '') => {
     const { ns, pod, err } = incidentData;
     
@@ -43,7 +64,7 @@ export default function AIChatPanel({ activeIncident, onClose }) {
     }
     
     const newStreamId = Date.now() + 1;
-    setMessages(prev => [...prev, { type: 'stream', id: newStreamId, pod, output: "Starting automated resolution...\n", isDone: false, isSolved: false }]);
+    setMessages(prev => [...prev, { type: 'stream', id: newStreamId, pod, output: "Otomatik çözüm başlatılıyor...\n", isDone: false, isSolved: false }]);
     
     const url = `http://${window.location.hostname}:3005/api/solve/stream?ns=${ns}&pod=${pod}&err=${encodeURIComponent(err)}&userInput=${encodeURIComponent(customInput)}`;
     const eventSource = new EventSource(url);
@@ -63,7 +84,7 @@ export default function AIChatPanel({ activeIncident, onClose }) {
     };
 
     eventSource.onerror = () => {
-      setMessages(prev => prev.map(m => m.id === newStreamId ? { ...m, output: m.output + `\n❌ Connection error or stream closed prematurely.`, isDone: true } : m));
+      setMessages(prev => prev.map(m => m.id === newStreamId ? { ...m, output: m.output + `\n❌ Bağlantı koptu veya işlem erken sonlandı.`, isDone: true } : m));
       eventSource.close();
     };
   };
@@ -77,10 +98,6 @@ export default function AIChatPanel({ activeIncident, onClose }) {
       setInputText('');
     }
   };
-
-  if (!isOpen && !activeIncident && messages.length === 0) {
-    return null; 
-  }
 
   return (
     <>
