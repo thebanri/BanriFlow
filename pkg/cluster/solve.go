@@ -20,8 +20,6 @@ func AutoFixStream(ctx context.Context, provider, namespace, pod, errMsg, userIn
 	}
 
 	actualPod := pod
-	// Eğer kullanıcı aynı incident üzerinden peş peşe mesaj atıyorsa, önceki mesaj deployment'ı yamalamış ve eski pod silinmiş olabilir.
-	// Bu yüzden her çağrıda prefix'ten yola çıkarak en güncel pod'u bulmaya çalışıyoruz.
 	parts := strings.Split(pod, "-")
 	var prefix string
 	if len(parts) >= 3 {
@@ -30,29 +28,36 @@ func AutoFixStream(ctx context.Context, provider, namespace, pod, errMsg, userIn
 		prefix = pod
 	}
 
-	findCmd := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf("kubectl get pods -n %s --no-headers | grep '^%s-' | head -n 1 | awk '{print $1}'", namespace, prefix))
-	findOut, err := findCmd.CombinedOutput()
-	foundPod := strings.TrimSpace(string(findOut))
-	if err == nil && foundPod != "" && foundPod != pod {
-		sendMsg(fmt.Sprintf("🔄 KubeSight: Eski pod (%s) artık yok. İşleme güncel pod (%s) üzerinden devam ediliyor.", pod, foundPod))
-		actualPod = foundPod
-	} else {
-		sendMsg(fmt.Sprintf("🔄 Hedef Pod: %s/%s", namespace, actualPod))
-	}
-
-	if userInput != "" {
-		sendMsg(fmt.Sprintf("🧑‍💻 Kullanıcı Talimatı İşleniyor: %s", userInput))
-	} else {
-		sendMsg("🧠 Yapay zeka sorunu analiz ediyor ve çözüm üretiyor...")
-	}
-
 	llm, err := analyzer.GetLLM(ctx, provider)
 	if err != nil {
 		sendMsg(fmt.Sprintf("❌ Hata: AI modeli yüklenemedi: %v", err))
 		return
 	}
 
-	prompt := fmt.Sprintf(`You are a Kubernetes Automated Repair Assistant.
+	maxRetries := 3
+	previousAttempts := ""
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// En güncel pod'u bul
+		findCmd := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf("kubectl get pods -n %s --sort-by=.metadata.creationTimestamp --no-headers | grep '^%s-' | tail -n 1 | awk '{print $1}'", namespace, prefix))
+		findOut, err := findCmd.CombinedOutput()
+		foundPod := strings.TrimSpace(string(findOut))
+		if err == nil && foundPod != "" && foundPod != actualPod {
+			sendMsg(fmt.Sprintf("🔄 KubeSight: İşleme en güncel pod (%s) üzerinden devam ediliyor.", foundPod))
+			actualPod = foundPod
+		} else if attempt == 1 {
+			sendMsg(fmt.Sprintf("🔄 Hedef Pod: %s/%s", namespace, actualPod))
+		}
+
+		if attempt > 1 {
+			sendMsg(fmt.Sprintf("⚠️ Yapay Zeka pes etmiyor! %d. deneme başlatılıyor...", attempt))
+		} else if userInput != "" {
+			sendMsg(fmt.Sprintf("🧑‍💻 Kullanıcı Talimatı İşleniyor: %s", userInput))
+		} else {
+			sendMsg("🧠 Yapay zeka sorunu analiz ediyor ve çözüm üretiyor...")
+		}
+
+		prompt := fmt.Sprintf(`You are a Kubernetes Automated Repair Assistant.
 Your task is to produce EXACTLY ONE BASH/KUBECTL COMMAND to fix the given Kubernetes error.
 OUTPUT ONLY THE COMMAND. Do not use markdown backticks, explanations, or any other text. JUST the raw command.
 
@@ -76,105 +81,122 @@ Pod: %s
 Deployment: %s
 Background Analysis: %s`, namespace, actualPod, prefix, errMsg)
 
-	// Try to fetch last 20 lines of logs to give AI more context
-	// We check both current and previous (crashed) container logs
-	logCmd := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf("kubectl logs %s -n %s --all-containers --tail=20 || kubectl logs %s -n %s --all-containers --tail=20 --previous", actualPod, namespace, actualPod, namespace))
-	logOut, _ := logCmd.CombinedOutput()
-	logStr := strings.TrimSpace(string(logOut))
-
-	// Fetch pod's container commands and args to help diagnose CrashLoopBackOff when logs are empty
-	cmdArgsCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", actualPod, "-n", namespace, "-o", "jsonpath={range .spec.containers[*]}Container: {.name}\\nCommand: {.command}\\nArgs: {.args}\\n---\\n{end}")
-	cmdArgsOut, _ := cmdArgsCmd.CombinedOutput()
-	cmdArgsStr := strings.TrimSpace(string(cmdArgsOut))
-	if len(cmdArgsStr) > 0 {
-		prompt += fmt.Sprintf("\n\n--- POD CONTAINER CONFIGURATIONS ---\n%s\n---------------------------------", cmdArgsStr)
-	}
-
-	// Fetch full Deployment YAML to give AI visibility over dnsPolicy, securityContext, volumes, etc.
-	yamlCmd := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf("kubectl get deployment %s -n %s -o yaml | grep -v 'f:' | grep -v 'kubectl.kubernetes.io/last-applied-configuration'", prefix, namespace))
-	yamlOut, _ := yamlCmd.CombinedOutput()
-	yamlStr := strings.TrimSpace(string(yamlOut))
-	if len(yamlStr) > 0 {
-		prompt += fmt.Sprintf("\n\n--- TARGET DEPLOYMENT YAML (Context for DNS, Volumes, Security) ---\n%s\n---------------------------------", yamlStr)
-	}
-
-	prompt += "\n\nCRITICAL NOTE: The user might ask you to 'check logs' or the error might be CrashLoopBackOff. DO NOT reply saying 'I cannot read logs'! The recent logs and container configurations have already been automatically fetched and are ATTACHED! READ THE LOGS AND CONFIGS to find the root cause (e.g. a typo in a sleep command), and directly output a 'kubectl patch deployment' command to fix it!"
-	if len(logStr) > 0 {
-		if len(logStr) < 2000 {
-			prompt += fmt.Sprintf("\n\n--- INJECTED POD LOGS (Last 20 Lines) ---\n%s\n---------------------------------", logStr)
-		} else {
-			prompt += fmt.Sprintf("\n\n--- INJECTED POD LOGS (Last 20 Lines) ---\n%s\n---------------------------------", logStr[:2000]+" ...[TRUNCATED]")
-		}
-	} else {
-		prompt += "\n\n--- INJECTED POD LOGS (Last 20 Lines) ---\n(Empty - Container crashed too fast to produce logs or pod was deleted. Rely on the POD CONTAINER CONFIGURATIONS above to spot mistakes like invalid sleep arguments!)\n---------------------------------"
-	}
-
-	if userInput != "" {
-		prompt += fmt.Sprintf("\n\nEXPLICIT USER INSTRUCTION: %s\nYou MUST STRICTLY obey this user instruction! If they provide a solution or image name, use it directly without hesitation.", userInput)
-	}
-
-	prompt += "\n\nOutput ONLY the valid, safe bash command to execute."
-
-	completion, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt, llms.WithTemperature(0.1))
-	if err != nil {
-		sendMsg(fmt.Sprintf("❌ Hata: AI çözüm üretemedi: %v", err))
-		return
-	}
-
-	cmdStr := strings.TrimSpace(completion)
-	cmdStr = strings.ReplaceAll(cmdStr, "```bash", "")
-	cmdStr = strings.ReplaceAll(cmdStr, "```", "")
-	cmdStr = strings.TrimSpace(cmdStr)
-
-	if cmdStr == "" {
-		sendMsg("❌ AI herhangi bir komut önermedi.")
-		return
-	}
-
-	sendMsg(fmt.Sprintf("⚙️ Çalıştırılan Komut: %s", cmdStr))
-	time.Sleep(1 * time.Second) // Küçük bir bekleme efekti
-
-	cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
-	out, err := cmd.CombinedOutput()
-
-	if err != nil {
-		sendMsg(fmt.Sprintf("⚠️ Komut başarısız oldu: %v", err))
-		if len(out) > 0 {
-			sendMsg(fmt.Sprintf("Çıktı: %s", string(out)))
-		}
-	} else {
-		sendMsg("✅ Komut başarıyla uygulandı!")
-		if len(out) > 0 {
-			sendMsg(fmt.Sprintf("Çıktı: %s", string(out)))
+		if previousAttempts != "" {
+			prompt += fmt.Sprintf("\n\nCRITICAL WARNING: YOUR PREVIOUS FIX ATTEMPTS FAILED!\nThe pod is still crashing. You must LEARN from your previous mistakes and try a DIFFERENT JSON PATCH OR APPROACH!\nHere is what you already tried:\n%s", previousAttempts)
 		}
 
-		if strings.HasPrefix(cmdStr, "echo") {
-			sendMsg("ℹ️ Bu sorun doğrudan çözülemediği için (veya bilgi amaçlı) sadece öneri sunuldu.")
-		} else {
-			sendMsg("⏳ Değişikliklerin etki etmesi bekleniyor (5 saniye)...")
-			time.Sleep(5 * time.Second)
-			sendMsg("🔍 Durum doğrulanıyor...")
+		logCmd := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf("kubectl logs %s -n %s --all-containers --tail=20 || kubectl logs %s -n %s --all-containers --tail=20 --previous", actualPod, namespace, actualPod, namespace))
+		logOut, _ := logCmd.CombinedOutput()
+		logStr := strings.TrimSpace(string(logOut))
 
-			checkCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", actualPod, "-n", namespace, "-o", "jsonpath={.status.phase} {.status.containerStatuses[0].state.waiting.reason}")
-			statusOut, checkErr := checkCmd.CombinedOutput()
-			status := strings.TrimSpace(string(statusOut))
+		cmdArgsCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", actualPod, "-n", namespace, "-o", "jsonpath={range .spec.containers[*]}Container: {.name}\\nCommand: {.command}\\nArgs: {.args}\\n---\\n{end}")
+		cmdArgsOut, _ := cmdArgsCmd.CombinedOutput()
+		cmdArgsStr := strings.TrimSpace(string(cmdArgsOut))
+		if len(cmdArgsStr) > 0 {
+			prompt += fmt.Sprintf("\n\n--- POD CONTAINER CONFIGURATIONS ---\n%s\n---------------------------------", cmdArgsStr)
+		}
 
-			if checkErr != nil {
-				// If pod is deleted or not found, it means the deployment is rolling out a new pod.
-				sendMsg("🎉 DOĞRULANDI: Eski pod silindi ve yenisi oluşturuluyor! (Deployment güncellendi)")
-				sendMsg("[SOLVED]")
-			} else if strings.Contains(status, "CrashLoopBackOff") || strings.Contains(status, "ImagePullBackOff") || strings.Contains(status, "ErrImagePull") {
-				sendMsg("⚠️ KISMİ BAŞARI: Komut çalıştı ancak Pod hala hatalı. Mevcut durum: " + status)
-			} else if strings.Contains(status, "Running") || strings.Contains(status, "Succeeded") || strings.Contains(status, "Pending") {
-				// Pending is fine for now, it means it's starting. Running without CrashLoop is also fine.
-				sendMsg("🎉 DOĞRULANDI: Sorun çözüldü veya çözülüyor! Pod durumu: " + status)
-				sendMsg("[SOLVED]")
+		yamlCmd := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf("kubectl get deployment %s -n %s -o yaml | grep -v 'f:' | grep -v 'kubectl.kubernetes.io/last-applied-configuration'", prefix, namespace))
+		yamlOut, _ := yamlCmd.CombinedOutput()
+		yamlStr := strings.TrimSpace(string(yamlOut))
+		if len(yamlStr) > 0 {
+			prompt += fmt.Sprintf("\n\n--- TARGET DEPLOYMENT YAML (Context for DNS, Volumes, Security) ---\n%s\n---------------------------------", yamlStr)
+		}
+
+		prompt += "\n\nCRITICAL NOTE: The user might ask you to 'check logs' or the error might be CrashLoopBackOff. DO NOT reply saying 'I cannot read logs'! The recent logs and container configurations have already been automatically fetched and are ATTACHED! READ THE LOGS AND CONFIGS to find the root cause, and directly output a 'kubectl patch deployment' command to fix it!"
+		
+		if len(logStr) > 0 {
+			if len(logStr) < 2000 {
+				prompt += fmt.Sprintf("\n\n--- INJECTED POD LOGS (Last 20 Lines) ---\n%s\n---------------------------------", logStr)
 			} else {
-				sendMsg("⚠️ DOĞRULAMA BELİRSİZ: Mevcut durum: " + status)
+				prompt += fmt.Sprintf("\n\n--- INJECTED POD LOGS (Last 20 Lines) ---\n%s\n---------------------------------", logStr[:2000]+" ...[TRUNCATED]")
+			}
+		} else {
+			prompt += "\n\n--- INJECTED POD LOGS (Last 20 Lines) ---\n(Empty - Container crashed too fast to produce logs or pod was deleted. Rely on the POD CONTAINER CONFIGURATIONS above to spot mistakes!)\n---------------------------------"
+		}
+
+		if userInput != "" {
+			prompt += fmt.Sprintf("\n\nEXPLICIT USER INSTRUCTION: %s\nYou MUST STRICTLY obey this user instruction! If they provide a solution or image name, use it directly without hesitation.", userInput)
+		}
+
+		prompt += "\n\nOutput ONLY the valid, safe bash command to execute."
+
+		completion, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt, llms.WithTemperature(0.2))
+		if err != nil {
+			sendMsg(fmt.Sprintf("❌ Hata: AI çözüm üretemedi: %v", err))
+			return
+		}
+
+		cmdStr := strings.TrimSpace(completion)
+		cmdStr = strings.ReplaceAll(cmdStr, "```bash", "")
+		cmdStr = strings.ReplaceAll(cmdStr, "```", "")
+		cmdStr = strings.TrimSpace(cmdStr)
+
+		if cmdStr == "" {
+			sendMsg("❌ AI herhangi bir komut önermedi.")
+			return
+		}
+
+		sendMsg(fmt.Sprintf("⚙️ Çalıştırılan Komut: %s", cmdStr))
+		time.Sleep(1 * time.Second)
+
+		cmd := exec.CommandContext(ctx, "bash", "-c", cmdStr)
+		out, err := cmd.CombinedOutput()
+
+		if err != nil {
+			sendMsg(fmt.Sprintf("⚠️ Komut başarısız oldu: %v", err))
+			if len(out) > 0 {
+				sendMsg(fmt.Sprintf("Çıktı: %s", string(out)))
+			}
+			previousAttempts += fmt.Sprintf("- Attempt %d: %s (Failed execution: %v)\n", attempt, cmdStr, err)
+			continue
+		} else {
+			sendMsg("✅ Komut başarıyla uygulandı!")
+			if len(out) > 0 {
+				sendMsg(fmt.Sprintf("Çıktı: %s", string(out)))
+			}
+
+			if strings.HasPrefix(cmdStr, "echo") {
+				sendMsg("ℹ️ Bu sorun doğrudan çözülemediği için (veya bilgi amaçlı) sadece öneri sunuldu.")
+				break
+			} else {
+				sendMsg("⏳ Değişikliklerin etki etmesi bekleniyor (10 saniye)...")
+				time.Sleep(10 * time.Second)
+				sendMsg("🔍 Durum doğrulanıyor...")
+
+				findCmd2 := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf("kubectl get pods -n %s --sort-by=.metadata.creationTimestamp --no-headers | grep '^%s-' | tail -n 1 | awk '{print $1}'", namespace, prefix))
+				findOut2, _ := findCmd2.CombinedOutput()
+				newestPod := strings.TrimSpace(string(findOut2))
+				if newestPod != "" {
+					actualPod = newestPod
+				}
+
+				checkCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", actualPod, "-n", namespace, "-o", "jsonpath={.status.phase} {.status.containerStatuses[0].state.waiting.reason}")
+				statusOut, checkErr := checkCmd.CombinedOutput()
+				status := strings.TrimSpace(string(statusOut))
+
+				if checkErr != nil {
+					sendMsg("🎉 DOĞRULANDI: Eski pod silindi ve yenisi oluşturuluyor! (Deployment güncellendi)")
+					sendMsg("[SOLVED]")
+					break
+				} else if strings.Contains(status, "CrashLoopBackOff") || strings.Contains(status, "ImagePullBackOff") || strings.Contains(status, "ErrImagePull") || strings.Contains(status, "RunContainerError") || strings.Contains(status, "CreateContainer") {
+					if attempt < maxRetries {
+						sendMsg("⚠️ KISMİ BAŞARI: Komut çalıştı ancak yeni Pod hala hatalı. Durum: " + status)
+						previousAttempts += fmt.Sprintf("- Attempt %d: %s (Result: %s)\n", attempt, cmdStr, status)
+					} else {
+						sendMsg("❌ BAŞARISIZ: Maksimum deneme sayısına ulaşıldı. Pod hala hatalı. Durum: " + status)
+					}
+				} else if strings.Contains(status, "Running") || strings.Contains(status, "Succeeded") || strings.Contains(status, "Pending") {
+					sendMsg("🎉 DOĞRULANDI: Sorun çözüldü veya çözülüyor! Pod durumu: " + status)
+					sendMsg("[SOLVED]")
+					break
+				} else {
+					sendMsg("⚠️ DOĞRULAMA BELİRSİZ: Mevcut durum: " + status)
+					break
+				}
 			}
 		}
 	}
-	
 	sendMsg("🏁 Süreç tamamlandı.")
 	sendMsg("[DONE]")
 }
