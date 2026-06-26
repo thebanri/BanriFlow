@@ -146,6 +146,23 @@ var serveCmd = &cobra.Command{
 			return c.JSON(data)
 		})
 
+		app.Get("/api/node/:namespace/:pod/logs", func(c *fiber.Ctx) error {
+			ns := c.Params("namespace")
+			pod := c.Params("pod")
+			logCmd := exec.CommandContext(context.Background(), "bash", "-c", fmt.Sprintf("kubectl logs %s -n %s --all-containers --tail=20 || kubectl logs %s -n %s --all-containers --tail=20 --previous", pod, ns, pod, ns))
+			logOut, _ := logCmd.CombinedOutput()
+			
+			// Eğer log boşsa (CrashLoopBackOff veya ContainerCreating gibi durumlar), events çekmeyi deneyelim
+			logStr := strings.TrimSpace(string(logOut))
+			if logStr == "" {
+				eventCmd := exec.CommandContext(context.Background(), "kubectl", "get", "events", "-n", ns, "--field-selector", fmt.Sprintf("involvedObject.name=%s", pod), "--sort-by=.metadata.creationTimestamp", "-o", "jsonpath={range .items[*]}{.type}: {.message}{\"\\n\"}{end}")
+				eventOut, _ := eventCmd.CombinedOutput()
+				logStr = strings.TrimSpace(string(eventOut))
+			}
+
+			return c.JSON(fiber.Map{"logs": logStr})
+		})
+
 		app.Get("/api/logs/history", func(c *fiber.Ctx) error {
 			// Get events from the last 7 days
 			events := cluster.GetRecentEvents(7)

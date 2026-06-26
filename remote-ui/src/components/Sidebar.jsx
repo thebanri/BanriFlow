@@ -1,13 +1,30 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { X, Activity, Cpu, HardDrive, AlertTriangle, ShieldCheck } from 'lucide-react';
 
 export default function Sidebar({ node, onClose, onSolve }) {
+  const [errorLogs, setErrorLogs] = useState('');
+
+  useEffect(() => {
+    if (node && node.status === 'error' && node.group === 'pod') {
+      axios.get(`http://${window.location.hostname}:3005/api/node/${node.namespace}/${node.name}/logs`)
+        .then(res => {
+          setErrorLogs(res.data.logs || 'Log veya Olay (Event) bulunamadı.');
+        })
+        .catch(err => {
+          setErrorLogs('Loglar sunucudan çekilemedi.');
+        });
+    } else {
+      setErrorLogs('');
+    }
+  }, [node]);
+
   if (!node) return null;
 
   const isError = node.status === 'error';
 
   return (
-    <div className="w-96 glass rounded-2xl border border-slate-700/50 overflow-hidden flex flex-col max-h-[calc(100vh-200px)]">
+    <div className="w-96 glass rounded-2xl border border-slate-700/50 overflow-hidden flex flex-col max-h-[calc(100vh-150px)]">
       {/* Header */}
       <div className="p-5 border-b border-slate-700/50 flex justify-between items-start bg-slate-900/50">
         <div>
@@ -62,9 +79,18 @@ export default function Sidebar({ node, onClose, onSolve }) {
           
           <p className="text-sm text-slate-300 leading-relaxed mb-3">
             {isError 
-              ? (node.restarts > 0 ? `Dikkat! Bu container ${node.restarts} kez yeniden başlatıldı. ${node.details} Hatanın tam nedeni için Terminal'den logları incele veya AI'a çözdür.` : `Container stabil değil veya hazır duruma (Ready) geçemedi. ${node.details}`)
+              ? (node.restarts > 0 ? `Dikkat! Bu container ${node.restarts} kez yeniden başlatıldı. ${node.details}` : `Container stabil değil veya hazır duruma (Ready) geçemedi. ${node.details}`)
               : "Kritik bir stabilite sorunu tespit edilmedi. Sistem sağlıklı çalışıyor."}
           </p>
+
+          {isError && errorLogs && (
+            <div className="mb-4 bg-slate-900/90 p-3 rounded-lg border border-red-500/30 max-h-48 overflow-y-auto">
+               <div className="text-[10px] text-slate-400 mb-1 font-bold tracking-wider uppercase">Son Loglar / Olaylar:</div>
+               <pre className="text-xs text-red-300 whitespace-pre-wrap font-mono break-words leading-relaxed">
+                 {errorLogs}
+               </pre>
+            </div>
+          )}
 
           {isError && onSolve && (
             <button 
