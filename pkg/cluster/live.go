@@ -85,7 +85,6 @@ func StartGlobalEventWatcher(ctx context.Context, aiProvider string) error {
 							} else {
 								// Mark as processed immediately to prevent duplicate requests while AI is thinking
 								aiSolutionCache.Store(cacheKey, "PENDING")
-								SaveEvent(fmt.Sprintf("[AI-Ops] ⚙️ Yapay zeka %s/%s için çözüm düşünüyor...", k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name))
 
 								go func(ns, name, errMsg, kind string) {
 									var extraContext string
