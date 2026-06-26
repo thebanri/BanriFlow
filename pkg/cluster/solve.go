@@ -175,7 +175,7 @@ Background Analysis: %s`, namespace, actualPod, prefix, errMsg)
 					actualPod = newestPod
 				}
 
-				checkCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", actualPod, "-n", namespace, "-o", "jsonpath={.status.phase} {.status.containerStatuses[0].state.waiting.reason}")
+				checkCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", actualPod, "-n", namespace, "-o", "jsonpath={.status.phase} {.status.containerStatuses[0].state.waiting.reason} Ready:{.status.containerStatuses[0].ready}")
 				statusOut, checkErr := checkCmd.CombinedOutput()
 				status := strings.TrimSpace(string(statusOut))
 
@@ -191,9 +191,18 @@ Background Analysis: %s`, namespace, actualPod, prefix, errMsg)
 						sendMsg("❌ BAŞARISIZ: Maksimum deneme sayısına ulaşıldı. Pod hala hatalı. Durum: " + status)
 					}
 				} else if strings.Contains(status, "Running") || strings.Contains(status, "Succeeded") {
-					sendMsg("🎉 DOĞRULANDI: Sorun çözüldü! Pod durumu: " + status)
-					sendMsg("[SOLVED]")
-					break
+					if strings.Contains(status, "Ready:false") {
+						if attempt < maxRetries {
+							sendMsg("⚠️ KISMİ BAŞARI: Pod çalışıyor (Running) ancak henüz Hazır (Ready) değil. Readiness Probe hatası olabilir. Durum: " + status)
+							previousAttempts += fmt.Sprintf("- Attempt %d: %s (Result: %s - Pod is Running but Not Ready)\n", attempt, cmdStr, status)
+						} else {
+							sendMsg("❌ BAŞARISIZ: Maksimum deneme sayısına ulaşıldı. Pod çalışıyor ama Hazır (Ready) değil. Durum: " + status)
+						}
+					} else {
+						sendMsg("🎉 DOĞRULANDI: Sorun çözüldü! Pod durumu: " + status)
+						sendMsg("[SOLVED]")
+						break
+					}
 				} else {
 					sendMsg("⚠️ DOĞRULAMA BELİRSİZ: Mevcut durum: " + status)
 					break
