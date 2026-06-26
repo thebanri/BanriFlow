@@ -89,6 +89,13 @@ Background Analysis: %s`, namespace, actualPod, prefix, errMsg)
 		logOut, _ := logCmd.CombinedOutput()
 		logStr := strings.TrimSpace(string(logOut))
 
+		eventCmd := exec.CommandContext(ctx, "bash", "-c", fmt.Sprintf("kubectl get events -n %s --field-selector involvedObject.name=%s --sort-by='.lastTimestamp' | tail -n 5", namespace, actualPod))
+		eventOut, _ := eventCmd.CombinedOutput()
+		eventStr := strings.TrimSpace(string(eventOut))
+		if len(eventStr) > 0 && !strings.Contains(eventStr, "No resources found") {
+			prompt += fmt.Sprintf("\n\n--- POD KUBERNETES EVENTS (CRITICAL for Mount/Pull/Schedule Errors) ---\n%s\n---------------------------------", eventStr)
+		}
+
 		cmdArgsCmd := exec.CommandContext(ctx, "kubectl", "get", "pod", actualPod, "-n", namespace, "-o", "jsonpath={range .spec.containers[*]}Container: {.name}\\nCommand: {.command}\\nArgs: {.args}\\n---\\n{end}")
 		cmdArgsOut, _ := cmdArgsCmd.CombinedOutput()
 		cmdArgsStr := strings.TrimSpace(string(cmdArgsOut))
@@ -179,15 +186,15 @@ Background Analysis: %s`, namespace, actualPod, prefix, errMsg)
 					sendMsg("🎉 DOĞRULANDI: Eski pod silindi ve yenisi oluşturuluyor! (Deployment güncellendi)")
 					sendMsg("[SOLVED]")
 					break
-				} else if strings.Contains(status, "CrashLoopBackOff") || strings.Contains(status, "ImagePullBackOff") || strings.Contains(status, "ErrImagePull") || strings.Contains(status, "RunContainerError") || strings.Contains(status, "CreateContainer") {
+				} else if strings.Contains(status, "CrashLoopBackOff") || strings.Contains(status, "ImagePullBackOff") || strings.Contains(status, "ErrImagePull") || strings.Contains(status, "RunContainerError") || strings.Contains(status, "ContainerCreating") || strings.Contains(status, "CreateContainerConfigError") || strings.Contains(status, "Pending") {
 					if attempt < maxRetries {
-						sendMsg("⚠️ KISMİ BAŞARI: Komut çalıştı ancak yeni Pod hala hatalı. Durum: " + status)
+						sendMsg("⚠️ KISMİ BAŞARI: Komut çalıştı ancak yeni Pod hala hatalı veya askıda (Pending). Durum: " + status)
 						previousAttempts += fmt.Sprintf("- Attempt %d: %s (Result: %s)\n", attempt, cmdStr, status)
 					} else {
 						sendMsg("❌ BAŞARISIZ: Maksimum deneme sayısına ulaşıldı. Pod hala hatalı. Durum: " + status)
 					}
-				} else if strings.Contains(status, "Running") || strings.Contains(status, "Succeeded") || strings.Contains(status, "Pending") {
-					sendMsg("🎉 DOĞRULANDI: Sorun çözüldü veya çözülüyor! Pod durumu: " + status)
+				} else if strings.Contains(status, "Running") || strings.Contains(status, "Succeeded") {
+					sendMsg("🎉 DOĞRULANDI: Sorun çözüldü! Pod durumu: " + status)
 					sendMsg("[SOLVED]")
 					break
 				} else {
