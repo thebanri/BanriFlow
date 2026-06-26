@@ -58,11 +58,13 @@ func StartGlobalEventWatcher(ctx context.Context, aiProvider string) error {
 					}
 					k8sEvent, ok := event.Object.(*corev1.Event)
 					if ok {
-						// Eğer bu olayı daha önce logladıysak (UID kontrolü) atla, dejavu yaşatmasın.
-						if _, exists := processedEvents.Load(k8sEvent.UID); exists {
+						// Eğer bu olayı daha önce aynı tekrar sayısıyla (Count) işlediysek atla.
+						// Böylece olay tekrar ettiğinde (örn. CrashLoopBackOff) yenisini yakalarız.
+						lastCount, exists := processedEvents.Load(k8sEvent.UID)
+						if exists && lastCount.(int32) == k8sEvent.Count {
 							continue
 						}
-						processedEvents.Store(k8sEvent.UID, true)
+						processedEvents.Store(k8sEvent.UID, k8sEvent.Count)
 
 						msg := fmt.Sprintf("[%s] %s/%s: %s", k8sEvent.Type, k8sEvent.InvolvedObject.Namespace, k8sEvent.InvolvedObject.Name, k8sEvent.Message)
 						SaveEvent(msg)
