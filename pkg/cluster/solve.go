@@ -64,8 +64,7 @@ OUTPUT ONLY THE COMMAND. Do not use markdown backticks, explanations, or any oth
 CRITICAL RULES:
 1. NEVER use bash redirection operators like "<" or ">" (even as placeholders). If you need to create resources, use 'kubectl create ...' commands instead of 'echo ... | kubectl apply -f -'.
 2. NEVER use 'kubectl patch pod' or 'kubectl edit pod' on a running Pod! To change commands, resources, or env vars, YOU MUST PATCH THE PARENT DEPLOYMENT.
-   - WRONG: kubectl patch pod my-pod-1234 -p ...
-   - CORRECT: kubectl patch deployment my-deployment -p ... (The exact deployment name is provided below).
+   - However, if the crash is caused by invalid content inside a ConfigMap, you MUST fix the ConfigMap directly using 'kubectl patch configmap' or 'kubectl create configmap ... --dry-run=client -o yaml | kubectl apply -f -'.
 3. MULTIPLE COMMANDS: You ARE ALLOWED to output multiple commands chained with '&&' or ';'. For example, if you need to fix an RBAC issue, you MUST create the Role and RoleBinding using 'kubectl create role ... && kubectl create rolebinding ...'. DO NOT give up and output an 'echo' command!
 4. NAMESPACE REQUIREMENT: You MUST append '-n <Namespace>' to every kubectl command you generate.
 5. CONTAINER NAME UNKNOWN: If you use 'kubectl set image' but don't know the exact container name, use '*' to target all containers. (e.g., kubectl set image deployment/app *=nginx:latest -n ns)
