@@ -30,6 +30,7 @@ CRITICAL RULES:
 5. CONTAINER NAME UNKNOWN: If you use 'kubectl set image' but don't know the exact container name, use '*' to target all containers. (e.g., kubectl set image deployment/app *=nginx:latest -n ns)
 6. RESOURCE UPDATES: If you need to update CPU/Memory limits or requests, DO NOT use 'kubectl patch' because you might not know the exact container name, which will cause an error. Instead, ALWAYS use 'kubectl set resources'. (e.g., kubectl set resources deployment/app --requests=memory=256Mi -n ns)
 7. FIXING COMMAND ERRORS: If the logs show a command error (e.g. "invalid time interval"), you CAN and SHOULD fix it by patching the deployment command directly. Example: kubectl patch deployment <name> -n <ns> --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/command", "value": ["sleep", "3600"]}]'
+8. NO BAND-AID FIXES: DO NOT attempt to "fix" an application crash by simply replacing the container's command with a sleep command (e.g. 'sleep 3600' or 'tail -f /dev/null'). You MUST attempt to fix the root cause of the crash (e.g. patching volume mounts, securityContext, dnsPolicy, etc.). If you cannot determine the root cause, output an 'echo' command advising the user, do NOT sleep the container!
 
 Namespace: %s
 Pod: %s
