@@ -27,11 +27,12 @@ spec:
         app: oom-crash
     spec:
       containers:
-      - name: redis
-        image: redis:alpine
+      - name: app
+        image: node:alpine
+        command: ["node", "-e", "const a = []; setInterval(() => a.push(new Array(1000000).fill('crash')), 10);"]
         resources:
           limits:
-            memory: "5Mi" # Redis 5MB ile çalışamaz, hemen patlayacaktır!
+            memory: "15Mi" # Node.js 15MB ile çalışamaz, script anında OOM yer!
 INNER_EOF
 
 echo "🏢 GERÇEK DÜNYA SENARYOSU 2: Eksik Çevre Değişkeni (Missing Env Var) 🔑"
