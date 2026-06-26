@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -84,7 +83,7 @@ var serveCmd = &cobra.Command{
 			}
 			
 			child := exec.Command(executable, childArgs...)
-			child.SysProcAttr = &syscall.SysProcAttr{Setsid: true} 
+			setSysProcAttr(child)
 			
 			logPath := filepath.Join(homeDir, ".banriflow.log")
 			logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
