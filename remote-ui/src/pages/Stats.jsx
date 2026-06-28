@@ -304,7 +304,7 @@ export default function Stats() {
     ];
   }, [liveMetrics]);
 
-  const aiWeeklyData = useMemo(() => {
+  const aiData = useMemo(() => {
     return liveMetrics?.aiWeekly || [
       { name: 'OpenAI', value: 0, cost: 0, fill: aiConfig.openai.color },
       { name: 'Gemini', value: 0, cost: 0, fill: aiConfig.gemini.color },
@@ -313,22 +313,10 @@ export default function Stats() {
     ];
   }, [liveMetrics]);
 
-  const aiMonthlyData = useMemo(() => {
-    return liveMetrics?.aiMonthly || [
-      { name: 'OpenAI', value: 0, cost: 0, fill: aiConfig.openai.color },
-      { name: 'Gemini', value: 0, cost: 0, fill: aiConfig.gemini.color },
-      { name: 'Claude', value: 0, cost: 0, fill: aiConfig.claude.color },
-      { name: 'Groq', value: 0, cost: 0, fill: aiConfig.groq.color }
-    ];
-  }, [liveMetrics]);
-
-  const activeAiWeeklyData = useMemo(() => {
-    return aiWeeklyData.filter(d => d.value > 0);
-  }, [aiWeeklyData]);
-
-  const activeAiMonthlyData = useMemo(() => {
-    return aiMonthlyData.filter(d => d.value > 0);
-  }, [aiMonthlyData]);
+  const activeAiData = useMemo(() => {
+    const filtered = aiData.filter(d => d.value > 0);
+    return filtered.length > 0 ? filtered : aiData;
+  }, [aiData]);
 
   const awsWeeklyData = useMemo(() => {
     return liveMetrics?.awsWeekly || [
@@ -368,10 +356,13 @@ export default function Stats() {
 
   // Helper formatting function for tokens (displays K or M dynamically)
   const formatTokens = (val) => {
-    if (val >= 1.0) {
-      return `${val.toFixed(2)}M`;
+    if (val >= 1000000) {
+      return `${(val / 1000000).toFixed(2)}M`;
     }
-    return `${(val * 1000).toFixed(0)}K`;
+    if (val >= 1000) {
+      return `${(val / 1000).toFixed(1)}K`;
+    }
+    return `${val}`;
   };
 
   const activePodCount = liveMetrics?.podCount || clusterTopology.pods.length || 4;
@@ -702,21 +693,7 @@ export default function Stats() {
                 </CardDescription>
               </div>
 
-              {/* Local Selector */}
-              <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
-                <button 
-                  onClick={() => setAiTimeRange('weekly')} 
-                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${aiTimeRange === 'weekly' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400'}`}
-                >
-                  Haftalık
-                </button>
-                <button 
-                  onClick={() => setAiTimeRange('monthly')} 
-                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${aiTimeRange === 'monthly' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400'}`}
-                >
-                  Aylık
-                </button>
-              </div>
+              {/* Removed Local Selector because AI tokens are cumulative */}
             </div>
           </CardHeader>
           <CardContent className="flex flex-col sm:flex-row justify-around items-center gap-6 pb-2">
@@ -726,7 +703,7 @@ export default function Stats() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={aiTimeRange === 'monthly' ? activeAiMonthlyData : activeAiWeeklyData}
+                    data={activeAiData}
                     cx="50%"
                     cy="50%"
                     innerRadius={55}
@@ -734,7 +711,7 @@ export default function Stats() {
                     paddingAngle={4}
                     dataKey="value"
                   >
-                    {(aiTimeRange === 'monthly' ? activeAiMonthlyData : activeAiWeeklyData).map((entry, index) => (
+                    {activeAiData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.fill} />
                     ))}
                   </Pie>
@@ -744,14 +721,14 @@ export default function Stats() {
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Toplam</span>
                 <span className="text-sm font-mono font-bold text-slate-200">
-                  {formatTokens(getSum(aiTimeRange === 'monthly' ? activeAiMonthlyData : activeAiWeeklyData, 'value'))}
+                  {formatTokens(getSum(activeAiData, 'value'))}
                 </span>
               </div>
             </div>
 
             {/* Detail stats legend table */}
             <div className="flex-1 flex flex-col gap-2.5 w-full">
-              {(aiTimeRange === 'monthly' ? activeAiMonthlyData : activeAiWeeklyData).map((prov, i) => (
+              {activeAiData.map((prov, i) => (
                 <div key={i} className="p-3 bg-slate-950/70 border border-slate-900/60 rounded-xl flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: prov.fill }}></div>
@@ -767,8 +744,8 @@ export default function Stats() {
 
           </CardContent>
           <CardFooter className="text-xs text-slate-400 justify-between">
-            <span>Sistem Olay Kaydı (7 Günlük): <b>{activeEventCount}</b></span>
-            <span className="text-emerald-500 font-bold font-mono">Toplam Yapay Zeka Gideri: ${getSum(aiTimeRange === 'monthly' ? activeAiMonthlyData : activeAiWeeklyData, 'cost').toFixed(2)}</span>
+            <span>Yapay Zeka Müdahale Sayısı: <b>{activeEventCount}</b></span>
+            <span className="text-emerald-500 font-bold font-mono">Toplam Yapay Zeka Gideri: ${getSum(activeAiData, 'cost').toFixed(2)}</span>
           </CardFooter>
         </Card>
 

@@ -202,9 +202,14 @@ var serveCmd = &cobra.Command{
 				}
 			}
 
-			// Get recent event count
+			// Get recent AI event count
+			eventCount = 0
 			if events := cluster.GetRecentEvents(7); events != nil {
-				eventCount = len(events)
+				for _, e := range events {
+					if strings.Contains(e.Text, "[AI-Ops]") {
+						eventCount++
+					}
+				}
 			}
 
 			// 1. Electricity calculation (RPi scale: 0.12 kWh per day per node/pod group)
@@ -254,16 +259,10 @@ var serveCmd = &cobra.Command{
 			}
 
 			weeklyAI := []fiber.Map{
-				{"name": "OpenAI", "value": mathRound(float64(tokenData["openai"])/1000000.0, 4), "cost": mathRound(float64(tokenData["openai"])/1000000.0*5.0, 2), "fill": "#10b981"},
-				{"name": "Gemini", "value": mathRound(float64(tokenData["gemini"])/1000000.0, 4), "cost": mathRound(float64(tokenData["gemini"])/1000000.0*0.15, 2), "fill": "#6366f1"},
-				{"name": "Claude", "value": mathRound(float64(tokenData["claude"])/1000000.0, 4), "cost": mathRound(float64(tokenData["claude"])/1000000.0*15.0, 2), "fill": "#f97316"},
-				{"name": "Groq", "value": mathRound(float64(tokenData["groq"])/1000000.0, 4), "cost": mathRound(float64(tokenData["groq"])/1000000.0*0.10, 2), "fill": "#ef4444"},
-			}
-			monthlyAI := []fiber.Map{
-				{"name": "OpenAI", "value": mathRound(float64(tokenData["openai"])*4.0/1000000.0, 4), "cost": mathRound(float64(tokenData["openai"])*4.0/1000000.0*5.0, 2), "fill": "#10b981"},
-				{"name": "Gemini", "value": mathRound(float64(tokenData["gemini"])*4.0/1000000.0, 4), "cost": mathRound(float64(tokenData["gemini"])*4.0/1000000.0*0.15, 2), "fill": "#6366f1"},
-				{"name": "Claude", "value": mathRound(float64(tokenData["claude"])*4.0/1000000.0, 4), "cost": mathRound(float64(tokenData["claude"])*4.0/1000000.0*15.0, 2), "fill": "#f97316"},
-				{"name": "Groq", "value": mathRound(float64(tokenData["groq"])*4.0/1000000.0, 4), "cost": mathRound(float64(tokenData["groq"])*4.0/1000000.0*0.10, 2), "fill": "#ef4444"},
+				{"name": "OpenAI", "value": tokenData["openai"], "cost": mathRound(float64(tokenData["openai"])/1000000.0*5.0, 4), "fill": "#10b981"},
+				{"name": "Gemini", "value": tokenData["gemini"], "cost": mathRound(float64(tokenData["gemini"])/1000000.0*0.15, 4), "fill": "#6366f1"},
+				{"name": "Claude", "value": tokenData["claude"], "cost": mathRound(float64(tokenData["claude"])/1000000.0*15.0, 4), "fill": "#f97316"},
+				{"name": "Groq", "value": tokenData["groq"], "cost": mathRound(float64(tokenData["groq"])/1000000.0*0.10, 4), "fill": "#ef4444"},
 			}
 
 			// 3. AWS Projections
@@ -313,7 +312,6 @@ var serveCmd = &cobra.Command{
 				"electricityMonthly": monthlyElectricity,
 				// AI Tokens
 				"aiWeekly":  weeklyAI,
-				"aiMonthly": monthlyAI,
 				// AWS Cost Projections
 				"awsWeekly":  weeklyAWS,
 				"awsMonthly": monthlyAWS,
