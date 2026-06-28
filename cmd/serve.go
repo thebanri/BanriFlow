@@ -239,7 +239,7 @@ var serveCmd = &cobra.Command{
 				"claude": 0,
 				"groq":   0,
 			}
-			if fileBytes, err := os.ReadFile("token_usage.json"); err == nil {
+			if fileBytes, err := os.ReadFile("/home/thebanri/Projects/BanriFlow/token_usage.json"); err == nil {
 				var temp map[string]int
 				if json.Unmarshal(fileBytes, &temp) == nil {
 					for k, v := range temp {

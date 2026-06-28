@@ -321,7 +321,7 @@ func trackTokens(provider string, prompt string, completion string) {
 	tokenFileLock.Lock()
 	defer tokenFileLock.Unlock()
 
-	filePath := "token_usage.json"
+	filePath := "/home/thebanri/Projects/BanriFlow/token_usage.json"
 	promptTokens := len(prompt) / 4
 	completionTokens := len(completion) / 4
 	totalTokens := promptTokens + completionTokens
@@ -333,15 +333,54 @@ func trackTokens(provider string, prompt string, completion string) {
 	}
 
 	p := strings.ToLower(provider)
-	if p == "anthropic" {
+	if p == "anthropic" || p == "claude" {
 		p = "claude"
-	} else if p == "auto" {
-		p = os.Getenv("DEFAULT_PROVIDER")
-		if p == "" {
+	} else if p == "openai" {
+		p = "openai"
+	} else if p == "groq" {
+		p = "groq"
+	} else if p == "gemini" {
+		p = "gemini"
+	} else if p == "openrouter" {
+		model := strings.ToLower(os.Getenv("OPENROUTER_MODEL"))
+		if strings.Contains(model, "claude") || strings.Contains(model, "anthropic") {
+			p = "claude"
+		} else if strings.Contains(model, "openai") || strings.Contains(model, "gpt") {
+			p = "openai"
+		} else if strings.Contains(model, "llama") {
+			p = "groq"
+		} else {
 			p = "gemini"
 		}
+	} else if p == "auto" {
+		p = strings.ToLower(os.Getenv("DEFAULT_PROVIDER"))
+		if p == "" {
+			if os.Getenv("GEMINI_API_KEY") != "" {
+				p = "gemini"
+			} else if os.Getenv("OPENAI_API_KEY") != "" {
+				p = "openai"
+			} else if os.Getenv("OPENROUTER_API_KEY") != "" {
+				p = "openrouter"
+			} else if os.Getenv("GROQ_API_KEY") != "" {
+				p = "groq"
+			} else if os.Getenv("ANTHROPIC_API_KEY") != "" {
+				p = "claude"
+			}
+		}
+		if p == "openrouter" {
+			model := strings.ToLower(os.Getenv("OPENROUTER_MODEL"))
+			if strings.Contains(model, "claude") || strings.Contains(model, "anthropic") {
+				p = "claude"
+			} else if strings.Contains(model, "openai") || strings.Contains(model, "gpt") {
+				p = "openai"
+			} else if strings.Contains(model, "llama") {
+				p = "groq"
+			} else {
+				p = "gemini"
+			}
+		}
 	}
-	if p == "" {
+	if p != "openai" && p != "gemini" && p != "claude" && p != "groq" {
 		p = "gemini"
 	}
 
