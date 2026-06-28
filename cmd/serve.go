@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -207,8 +208,9 @@ var serveCmd = &cobra.Command{
 			}
 
 			// 1. Electricity calculation (RPi scale: 0.12 kWh per day per node/pod group)
+			// Make it fully stable (does not fluctuate with split-second CPU fluctuations)
 			nodeCount := (podCount / 8) + 1
-			dailyBase := 0.12 * float64(nodeCount) * (0.8 + (cpu / 100) * 0.4)
+			dailyBase := 0.12 * float64(nodeCount) 
 			monthlyBase := 3.6 * float64(nodeCount)
 
 			weeklyElectricity := []fiber.Map{
@@ -230,19 +232,35 @@ var serveCmd = &cobra.Command{
 				{"name": "Haz", "kwh": mathRound(monthlyBase * 1.12, 2), "cost": mathRound(monthlyBase * 1.12 * 0.15, 3)},
 			}
 
-			// 2. AI Tokens (based on actual log event count)
-			tokenFactor := 0.5 + (float64(eventCount) * 0.15)
+			// 2. AI Tokens loaded dynamically from token_usage.json
+			tokenData := map[string]int{
+				"openai": 85000,
+				"gemini": 240000,
+				"claude": 35000,
+				"groq":   450000,
+			}
+			if fileBytes, err := os.ReadFile("token_usage.json"); err == nil {
+				var temp map[string]int
+				if json.Unmarshal(fileBytes, &temp) == nil {
+					for k, v := range temp {
+						if v > 0 {
+							tokenData[k] = v
+						}
+					}
+				}
+			}
+
 			weeklyAI := []fiber.Map{
-				{"name": "OpenAI", "value": mathRound(0.085*tokenFactor, 3), "cost": mathRound(0.085*tokenFactor*5.0, 2), "fill": "#10b981"},
-				{"name": "Gemini", "value": mathRound(0.240*tokenFactor, 3), "cost": mathRound(0.240*tokenFactor*0.15, 2), "fill": "#6366f1"},
-				{"name": "Claude", "value": mathRound(0.035*tokenFactor, 3), "cost": mathRound(0.035*tokenFactor*15.0, 2), "fill": "#f97316"},
-				{"name": "Groq", "value": mathRound(0.450*tokenFactor, 3), "cost": mathRound(0.450*tokenFactor*0.10, 2), "fill": "#ef4444"},
+				{"name": "OpenAI", "value": mathRound(float64(tokenData["openai"])/1000000.0, 4), "cost": mathRound(float64(tokenData["openai"])/1000000.0*5.0, 2), "fill": "#10b981"},
+				{"name": "Gemini", "value": mathRound(float64(tokenData["gemini"])/1000000.0, 4), "cost": mathRound(float64(tokenData["gemini"])/1000000.0*0.15, 2), "fill": "#6366f1"},
+				{"name": "Claude", "value": mathRound(float64(tokenData["claude"])/1000000.0, 4), "cost": mathRound(float64(tokenData["claude"])/1000000.0*15.0, 2), "fill": "#f97316"},
+				{"name": "Groq", "value": mathRound(float64(tokenData["groq"])/1000000.0, 4), "cost": mathRound(float64(tokenData["groq"])/1000000.0*0.10, 2), "fill": "#ef4444"},
 			}
 			monthlyAI := []fiber.Map{
-				{"name": "OpenAI", "value": mathRound(0.360*tokenFactor, 3), "cost": mathRound(0.360*tokenFactor*5.0, 2), "fill": "#10b981"},
-				{"name": "Gemini", "value": mathRound(0.980*tokenFactor, 3), "cost": mathRound(0.980*tokenFactor*0.15, 2), "fill": "#6366f1"},
-				{"name": "Claude", "value": mathRound(0.140*tokenFactor, 3), "cost": mathRound(0.140*tokenFactor*15.0, 2), "fill": "#f97316"},
-				{"name": "Groq", "value": mathRound(1.850*tokenFactor, 3), "cost": mathRound(1.850*tokenFactor*0.10, 2), "fill": "#ef4444"},
+				{"name": "OpenAI", "value": mathRound(float64(tokenData["openai"])*4.0/1000000.0, 4), "cost": mathRound(float64(tokenData["openai"])*4.0/1000000.0*5.0, 2), "fill": "#10b981"},
+				{"name": "Gemini", "value": mathRound(float64(tokenData["gemini"])*4.0/1000000.0, 4), "cost": mathRound(float64(tokenData["gemini"])*4.0/1000000.0*0.15, 2), "fill": "#6366f1"},
+				{"name": "Claude", "value": mathRound(float64(tokenData["claude"])*4.0/1000000.0, 4), "cost": mathRound(float64(tokenData["claude"])*4.0/1000000.0*15.0, 2), "fill": "#f97316"},
+				{"name": "Groq", "value": mathRound(float64(tokenData["groq"])*4.0/1000000.0, 4), "cost": mathRound(float64(tokenData["groq"])*4.0/1000000.0*0.10, 2), "fill": "#ef4444"},
 			}
 
 			// 3. AWS Projections

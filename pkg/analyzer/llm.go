@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/anthropic"
@@ -107,6 +108,8 @@ func RunAIAnalysis(ctx context.Context, filePath string, provider string, custom
 		return nil, fmt.Errorf("AI generation failed: %w", err)
 	}
 
+	trackTokens(provider, prompt, completion)
+
 	var issues []Issue
 	
 	// Clean up potential markdown formatting from completion
@@ -188,6 +191,8 @@ JSON format:
 		return nil, fmt.Errorf("AI generation failed: %w", err)
 	}
 
+	trackTokens(provider, prompt, completion)
+
 	var issues []Issue
 	cleanJson := strings.TrimPrefix(completion, "```json")
 	cleanJson = strings.TrimPrefix(cleanJson, "```")
@@ -257,6 +262,8 @@ JSON format:
 		return nil, fmt.Errorf("AI generation failed: %w", err)
 	}
 
+	trackTokens(provider, prompt, completion)
+
 	var issues []Issue
 	cleanJson := strings.TrimPrefix(completion, "```json")
 	cleanJson = strings.TrimPrefix(cleanJson, "```")
@@ -299,9 +306,49 @@ Olay Mesajı: "%s"`, logMessage)
 		return "", fmt.Errorf("AI solution failed: %w", err)
 	}
 
+	trackTokens(provider, prompt, completion)
+
 	cleanMsg := strings.TrimSpace(completion)
 	cleanMsg = strings.ReplaceAll(cleanMsg, "\n", " ")
 	cleanMsg = strings.ReplaceAll(cleanMsg, "\r", "")
 
 	return cleanMsg, nil
+}
+
+var tokenFileLock sync.Mutex
+
+func trackTokens(provider string, prompt string, completion string) {
+	tokenFileLock.Lock()
+	defer tokenFileLock.Unlock()
+
+	filePath := "token_usage.json"
+	promptTokens := len(prompt) / 4
+	completionTokens := len(completion) / 4
+	totalTokens := promptTokens + completionTokens
+
+	data := make(map[string]int)
+	fileBytes, err := os.ReadFile(filePath)
+	if err == nil {
+		_ = json.Unmarshal(fileBytes, &data)
+	}
+
+	p := strings.ToLower(provider)
+	if p == "anthropic" {
+		p = "claude"
+	} else if p == "auto" {
+		p = os.Getenv("DEFAULT_PROVIDER")
+		if p == "" {
+			p = "gemini"
+		}
+	}
+	if p == "" {
+		p = "gemini"
+	}
+
+	data[p] = data[p] + totalTokens
+
+	updatedBytes, err := json.MarshalIndent(data, "", "  ")
+	if err == nil {
+		_ = os.WriteFile(filePath, updatedBytes, 0644)
+	}
 }
