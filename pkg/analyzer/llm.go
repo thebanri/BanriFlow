@@ -328,8 +328,13 @@ func trackTokens(provider string, prompt string, completion string) {
 
 	data := make(map[string]int)
 	fileBytes, err := os.ReadFile(filePath)
+	if err != nil && !os.IsNotExist(err) {
+		fmt.Printf("⚠️  Token tracking file read error (path: %s): %v\n", filePath, err)
+	}
 	if err == nil {
-		_ = json.Unmarshal(fileBytes, &data)
+		if errJson := json.Unmarshal(fileBytes, &data); errJson != nil {
+			fmt.Printf("⚠️  Token tracking json unmarshal error: %v\n", errJson)
+		}
 	}
 
 	p := strings.ToLower(provider)
@@ -387,7 +392,11 @@ func trackTokens(provider string, prompt string, completion string) {
 	data[p] = data[p] + totalTokens
 
 	updatedBytes, err := json.MarshalIndent(data, "", "  ")
-	if err == nil {
-		_ = os.WriteFile(filePath, updatedBytes, 0644)
+	if err != nil {
+		fmt.Printf("⚠️  Token tracking marshal error: %v\n", err)
+		return
+	}
+	if err := os.WriteFile(filePath, updatedBytes, 0666); err != nil {
+		fmt.Printf("⚠️  Token tracking file write error (path: %s): %v\n", filePath, err)
 	}
 }

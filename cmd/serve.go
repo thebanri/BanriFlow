@@ -241,11 +241,15 @@ var serveCmd = &cobra.Command{
 			}
 			if fileBytes, err := os.ReadFile("/home/thebanri/Projects/BanriFlow/token_usage.json"); err == nil {
 				var temp map[string]int
-				if json.Unmarshal(fileBytes, &temp) == nil {
+				if errJson := json.Unmarshal(fileBytes, &temp); errJson == nil {
 					for k, v := range temp {
 						tokenData[k] = v
 					}
+				} else {
+					fmt.Printf("⚠️  Server Metrics API: token_usage.json unmarshal error: %v\n", errJson)
 				}
+			} else if !os.IsNotExist(err) {
+				fmt.Printf("⚠️  Server Metrics API: token_usage.json read error: %v\n", err)
 			}
 
 			weeklyAI := []fiber.Map{
