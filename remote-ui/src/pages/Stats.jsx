@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import axios from 'axios';
 import { 
   BarChart2, Cpu, Zap, Activity, ShieldAlert, 
   Layers, HardDrive, DollarSign, RefreshCw, ArrowUpRight, 
@@ -26,30 +27,31 @@ import {
   ChartLegendContent,
 } from '../components/ui/chart';
 
-// Initial random helper generators
-const generateInitialHistory = (points, min, max) => {
+// Initial helper to seed empty chart history
+const generateInitialHistory = (points) => {
   return Array.from({ length: points }, (_, i) => {
     const time = new Date(Date.now() - (points - i) * 2000).toLocaleTimeString('tr-TR', { hour12: false });
-    const value = Math.floor(Math.random() * (max - min + 1) + min);
-    return { time, value };
+    return { time, value: 0 };
   });
 };
 
 const generateInitialNetworkHistory = (points) => {
   return Array.from({ length: points }, (_, i) => {
     const time = new Date(Date.now() - (points - i) * 2000).toLocaleTimeString('tr-TR', { hour12: false });
-    const rx = Math.floor(Math.random() * 50 + 20); // 20-70 Mbps
-    const tx = Math.floor(Math.random() * 40 + 15); // 15-55 Mbps
-    return { time, rx, tx };
+    return { time, rx: 0, tx: 0 };
   });
 };
 
 export default function Stats() {
-  const [timeRange, setTimeRange] = useState('real-time'); // 'real-time' | 'weekly' | 'monthly'
+  // --- Local Card-level Time Range States ---
+  const [awsTimeRange, setAwsTimeRange] = useState('weekly'); // 'weekly' | 'monthly'
+  const [aiTimeRange, setAiTimeRange] = useState('weekly');   // 'weekly' | 'monthly'
+  const [tfTimeRange, setTfTimeRange] = useState('weekly');   // 'weekly' | 'monthly'
+  const [elecTimeRange, setElecTimeRange] = useState('weekly'); // 'weekly' | 'monthly'
 
   // --- Real-time Systems Data State ---
-  const [cpuHistory, setCpuHistory] = useState(() => generateInitialHistory(15, 30, 65));
-  const [ramHistory, setRamHistory] = useState(() => generateInitialHistory(15, 55, 75));
+  const [cpuHistory, setCpuHistory] = useState(() => generateInitialHistory(15));
+  const [ramHistory, setRamHistory] = useState(() => generateInitialHistory(15));
   const [networkHistory, setNetworkHistory] = useState(() => generateInitialNetworkHistory(15));
   
   // Current values derived from state
@@ -57,228 +59,348 @@ export default function Stats() {
   const currentRam = ramHistory[ramHistory.length - 1]?.value || 0;
   const currentRx = networkHistory[networkHistory.length - 1]?.rx || 0;
   const currentTx = networkHistory[networkHistory.length - 1]?.tx || 0;
+
+  // Live Cluster Data & Log Counts from Go API
+  const [clusterTopology, setClusterTopology] = useState({ pods: [], services: [] });
+  const [eventCount, setEventCount] = useState(0);
+  const [liveMetrics, setLiveMetrics] = useState(null);
   
+  const liveMetricsRef = useRef(null);
+  useEffect(() => {
+    liveMetricsRef.current = liveMetrics;
+  }, [liveMetrics]);
+
+  // Network logs state
+  const [bottleneckLogs, setBottleneckLogs] = useState([
+    { id: 1, time: 'Init', type: 'Sistem Başlatıldı', desc: 'Canlı donanım ve ağ dinleyicileri aktif.', severity: 'warning' },
+  ]);
+
+  // --- Fetch Topology & Logs from Backend ---
+  useEffect(() => {
+    const fetchTopology = () => {
+      const url = `http://${window.location.hostname}:3005/api/topology`;
+      axios.get(url)
+        .then(res => {
+          if (res.data && res.data.nodes) {
+            const pods = res.data.nodes.filter(n => n.group === 'pod');
+            const services = res.data.nodes.filter(n => n.group === 'service');
+            setClusterTopology({ pods, services });
+          }
+        })
+        .catch(err => console.warn("Topology API not reachable. Using fallback values.", err));
+    };
+
+    const fetchLogs = () => {
+      const url = `http://${window.location.hostname}:3005/api/logs/history`;
+      axios.get(url)
+        .then(res => {
+          if (res.data && Array.isArray(res.data)) {
+            setEventCount(res.data.length);
+          }
+        })
+        .catch(err => console.warn("Log history API not reachable. Using fallback values.", err));
+    };
+
+    fetchTopology();
+    fetchLogs();
+    const interval = setInterval(() => {
+      fetchTopology();
+      fetchLogs();
+    }, 8000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // --- Fetch Live Host OS Metrics (CPU/RAM/Net) from Go Backend ---
+  useEffect(() => {
+    const fetchSystemMetrics = () => {
+      const url = `http://${window.location.hostname}:3005/api/system/metrics`;
+      axios.get(url)
+        .then(res => {
+          if (res.data) {
+            setLiveMetrics(res.data);
+          }
+        })
+        .catch(err => {
+          setLiveMetrics(null); // Force simulation fallback
+        });
+    };
+
+    fetchSystemMetrics();
+    const interval = setInterval(fetchSystemMetrics, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Bottleneck detection
   const isBottleneck = useMemo(() => {
     return (currentRx + currentTx) > 130 || currentCpu > 85;
   }, [currentRx, currentTx, currentCpu]);
 
-  // Network logs state
-  const [bottleneckLogs, setBottleneckLogs] = useState([
-    { id: 1, time: '19:12:05', type: 'Yüksek Trafik', desc: '"auth-api" servisinde ani anlık yük yükselişi', severity: 'warning' },
-    { id: 2, time: '19:08:44', type: 'I/O Limiti', desc: 'Depolama alanı gp3 3,000 IOPS sınırında daralıyor', severity: 'danger' },
-  ]);
-
-  // --- Real-time Simulator Loop ---
+  // --- Real-time Simulator & Live Updater Loop ---
   useEffect(() => {
     const interval = setInterval(() => {
       const timeNow = new Date().toLocaleTimeString('tr-TR', { hour12: false });
-      
-      // Update CPU
-      setCpuHistory(prev => {
-        const lastVal = prev[prev.length - 1].value;
-        const drift = Math.floor(Math.random() * 17) - 8; // -8% to +8%
-        const spike = Math.random() > 0.94 ? Math.floor(Math.random() * 20) + 15 : 0;
-        let newVal = Math.min(Math.max(lastVal + drift + spike, 15), 98);
-        return [...prev.slice(1), { time: timeNow, value: newVal }];
-      });
+      const currentLive = liveMetricsRef.current;
 
-      // Update RAM
-      setRamHistory(prev => {
-        const lastVal = prev[prev.length - 1].value;
-        const drift = Math.floor(Math.random() * 5) - 2;
-        let newVal = Math.min(Math.max(lastVal + drift, 45), 92);
-        return [...prev.slice(1), { time: timeNow, value: newVal }];
-      });
-
-      // Update Network I/O
-      setNetworkHistory(prev => {
-        const lastRx = prev[prev.length - 1].rx;
-        const lastTx = prev[prev.length - 1].tx;
+      if (currentLive) {
+        // USE REAL LIVE DATA from Raspberry Pi / Host Machine
+        setCpuHistory(prev => [...prev.slice(1), { time: timeNow, value: Math.round(currentLive.cpuPercent) }]);
+        setRamHistory(prev => [...prev.slice(1), { time: timeNow, value: Math.round(currentLive.memPercent) }]);
         
-        const isBurst = Math.random() > 0.90;
-        const rxDrift = isBurst ? Math.floor(Math.random() * 50) + 40 : Math.floor(Math.random() * 12) - 6;
-        const txDrift = isBurst ? Math.floor(Math.random() * 40) + 30 : Math.floor(Math.random() * 8) - 4;
+        const rxMbps = Math.round(currentLive.netRxMBps * 8 * 10) / 10;
+        const txMbps = Math.round(currentLive.netTxMBps * 8 * 10) / 10;
+        setNetworkHistory(prev => [...prev.slice(1), { time: timeNow, rx: rxMbps, tx: txMbps }]);
 
-        let newRx = Math.min(Math.max(lastRx + rxDrift, 10), 160);
-        let newTx = Math.min(Math.max(lastTx + txDrift, 8), 120);
-
-        if (newRx + newTx > 140) {
+        if (rxMbps + txMbps > 120) {
           setBottleneckLogs(old => {
             const exists = old.some(log => log.time === timeNow);
             if (exists) return old;
             const newLog = {
               id: Date.now(),
               time: timeNow,
-              type: 'Ağ Tıkanıklığı',
-              desc: `Anlık hız ${(newRx + newTx)} Mbps sınırına ulaştı (Rx: ${newRx} / Tx: ${newTx})`,
-              severity: 'danger'
+              type: 'Yüksek Ağ Yoğunluğu',
+              desc: `Canlı trafik ${rxMbps + txMbps} Mbps sınırına ulaştı (Rx: ${rxMbps} / Tx: ${txMbps})`,
+              severity: 'warning'
             };
             return [newLog, ...old.slice(0, 4)];
           });
         }
+      } else {
+        // FALLBACK TO SIMULATOR (If Go Server / API is offline during local dev)
+        const hasErrorPod = clusterTopology.pods.some(p => p.status === 'error');
+        const podCount = clusterTopology.pods.length || 5;
 
-        return [...prev.slice(1), { time: timeNow, rx: newRx, tx: newTx }];
-      });
+        setCpuHistory(prev => {
+          const lastVal = prev[prev.length - 1]?.value || 30;
+          const baseline = Math.min(20 + podCount * 4 + (hasErrorPod ? 25 : 0), 90);
+          const drift = Math.floor(Math.random() * 11) - 5; // -5% to +5%
+          let newVal = Math.min(Math.max(baseline + drift, 10), 98);
+          return [...prev.slice(1), { time: timeNow, value: newVal }];
+        });
 
+        setRamHistory(prev => {
+          const lastVal = prev[prev.length - 1]?.value || 55;
+          const baseline = Math.min(35 + podCount * 4, 85);
+          const drift = Math.floor(Math.random() * 5) - 2;
+          let newVal = Math.min(Math.max(baseline + drift, 30), 95);
+          return [...prev.slice(1), { time: timeNow, value: newVal }];
+        });
+
+        setNetworkHistory(prev => {
+          const lastRx = prev[prev.length - 1]?.rx || 30;
+          const lastTx = prev[prev.length - 1]?.tx || 25;
+          
+          const isBurst = Math.random() > 0.90;
+          const rxDrift = isBurst ? Math.floor(Math.random() * 40) + 30 : Math.floor(Math.random() * 10) - 5;
+          const txDrift = isBurst ? Math.floor(Math.random() * 30) + 20 : Math.floor(Math.random() * 8) - 4;
+
+          let newRx = Math.min(Math.max(lastRx + rxDrift, 15), 140);
+          let newTx = Math.min(Math.max(lastTx + txDrift, 10), 100);
+
+          if (newRx + newTx > 130) {
+            setBottleneckLogs(old => {
+              const exists = old.some(log => log.time === timeNow);
+              if (exists) return old;
+              const newLog = {
+                id: Date.now(),
+                time: timeNow,
+                type: 'Ağ Tıkanıklığı (Simüle)',
+                desc: `Trafik ${newRx + newTx} Mbps seviyesine ulaştı (Rx: ${newRx} / Tx: ${newTx})`,
+                severity: 'warning'
+              };
+              return [newLog, ...old.slice(0, 4)];
+            });
+          }
+
+          return [...prev.slice(1), { time: timeNow, rx: newRx, tx: newTx }];
+        });
+      }
     }, 2000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [clusterTopology.pods]);
 
-  // --- Chart Configs (Renk Seçimleri Taki UI Stilinde) ---
+  // --- Chart Configs ---
   const cpuConfig = {
     value: {
       label: "CPU Kullanımı (%)",
-      color: "#06b6d4", // Cyan
+      color: "#06b6d4", 
     }
   };
 
   const ramConfig = {
     value: {
       label: "RAM Kullanımı (%)",
-      color: "#8b5cf6", // Purple
+      color: "#8b5cf6", 
     }
   };
 
   const networkConfig = {
     rx: {
       label: "Gelen (Rx)",
-      color: "#3b82f6", // Blue
+      color: "#3b82f6", 
     },
     tx: {
       label: "Giden (Tx)",
-      color: "#ec4899", // Pink
+      color: "#ec4899", 
     }
   };
 
   const electricityConfig = {
     kwh: {
       label: "Tüketim (kWh)",
-      color: "#f59e0b", // Amber
+      color: "#f59e0b", 
     }
   };
 
   const aiConfig = {
     openai: { label: "OpenAI", color: "#10b981" },
     gemini: { label: "Gemini", color: "#6366f1" },
-    claude: { label: "Claude (Anthropic)", color: "#f97316" },
+    claude: { label: "Claude", color: "#f97316" },
     groq: { label: "Groq API", color: "#ef4444" }
   };
 
   const awsConfig = {
     cost: {
       label: "Maliyet ($)",
-      color: "#4f46e5", // Indigo
+      color: "#4f46e5", 
     }
   };
 
   const tfConfig = {
     cost: {
       label: "Terraform ($)",
-      color: "#d946ef", // Fuchsia
+      color: "#d946ef", 
     }
   };
 
-  // --- Electricity Usage Data ---
-  const electricityWeeklyData = [
-    { name: 'Pzt', kwh: 340, cost: 51 },
-    { name: 'Sal', kwh: 380, cost: 57 },
-    { name: 'Çar', kwh: 410, cost: 61.5 },
-    { name: 'Per', kwh: 395, cost: 59.2 },
-    { name: 'Cum', kwh: 440, cost: 66 },
-    { name: 'Cmt', kwh: 320, cost: 48 },
-    { name: 'Paz', kwh: 290, cost: 43.5 },
-  ];
+  // --- Dynamic calculations based on live pod & event counts ---
+  const activePodCount = clusterTopology.pods.length || 4;
+  const activeServiceCount = clusterTopology.services.length || 3;
+  const activeEventCount = eventCount || 8;
 
-  const electricityMonthlyData = [
-    { name: 'Ocak', kwh: 1520, cost: 228 },
-    { name: 'Şubat', kwh: 1480, cost: 222 },
-    { name: 'Mart', kwh: 1610, cost: 241.5 },
-    { name: 'Nisan', kwh: 1550, cost: 232.5 },
-    { name: 'Mayıs', kwh: 1690, cost: 253.5 },
-    { name: 'Haziran', kwh: 1750, cost: 262.5 },
-  ];
+  // 1. Electricity Usage Data (scales with CPU load / pod density)
+  const electricityWeeklyData = useMemo(() => {
+    const factor = 0.5 + (activePodCount / 8);
+    return [
+      { name: 'Pzt', kwh: Math.round(300 * factor), cost: Math.round(300 * factor * 0.15) },
+      { name: 'Sal', kwh: Math.round(340 * factor), cost: Math.round(340 * factor * 0.15) },
+      { name: 'Çar', kwh: Math.round(380 * factor), cost: Math.round(380 * factor * 0.15) },
+      { name: 'Per', kwh: Math.round(365 * factor), cost: Math.round(365 * factor * 0.15) },
+      { name: 'Cum', kwh: Math.round(410 * factor), cost: Math.round(410 * factor * 0.15) },
+      { name: 'Cmt', kwh: Math.round(290 * factor), cost: Math.round(290 * factor * 0.15) },
+      { name: 'Paz', kwh: Math.round(260 * factor), cost: Math.round(260 * factor * 0.15) },
+    ];
+  }, [activePodCount]);
 
-  // --- AI Token Usage Data ---
-  const aiWeeklyData = [
-    { name: 'OpenAI', tokens: 6300000, value: 6.3, cost: 31.50, fill: aiConfig.openai.color },
-    { name: 'Gemini', tokens: 11200000, value: 11.2, cost: 16.80, fill: aiConfig.gemini.color },
-    { name: 'Claude', tokens: 2800000, value: 2.8, cost: 42.00, fill: aiConfig.claude.color },
-    { name: 'Groq', tokens: 18500000, value: 18.5, cost: 7.40, fill: aiConfig.groq.color }
-  ];
+  const electricityMonthlyData = useMemo(() => {
+    const factor = 0.5 + (activePodCount / 8);
+    return [
+      { name: 'Oca', kwh: Math.round(1400 * factor), cost: Math.round(1400 * factor * 0.15) },
+      { name: 'Şub', kwh: Math.round(1350 * factor), cost: Math.round(1350 * factor * 0.15) },
+      { name: 'Mar', kwh: Math.round(1500 * factor), cost: Math.round(1500 * factor * 0.15) },
+      { name: 'Nis', kwh: Math.round(1420 * factor), cost: Math.round(1420 * factor * 0.15) },
+      { name: 'May', kwh: Math.round(1600 * factor), cost: Math.round(1600 * factor * 0.15) },
+      { name: 'Haz', kwh: Math.round(1680 * factor), cost: Math.round(1680 * factor * 0.15) },
+    ];
+  }, [activePodCount]);
 
-  const aiMonthlyData = [
-    { name: 'OpenAI', tokens: 28500000, value: 28.5, cost: 142.50, fill: aiConfig.openai.color },
-    { name: 'Gemini', tokens: 49000000, value: 49.0, cost: 73.50, fill: aiConfig.gemini.color },
-    { name: 'Claude', tokens: 12100000, value: 12.1, cost: 181.50, fill: aiConfig.claude.color },
-    { name: 'Groq', tokens: 82000000, value: 82.0, cost: 32.80, fill: aiConfig.groq.color }
-  ];
+  // 2. AI Token Usage (scales with error log events processed by Solver)
+  const tokenFactor = 1.0 + (activeEventCount * 0.05);
 
-  // --- AWS Cost Estimation Data ---
-  const awsWeeklyData = [
-    { name: 'EC2', cost: 78.50 },
-    { name: 'EKS', cost: 95.00 },
-    { name: 'RDS', cost: 52.30 },
-    { name: 'S3', cost: 24.10 },
-    { name: 'Networking', cost: 36.80 },
-  ];
+  const aiWeeklyData = useMemo(() => {
+    return [
+      { name: 'OpenAI', value: Math.round(5.2 * tokenFactor * 10) / 10, cost: 5.2 * tokenFactor * 4.5, fill: aiConfig.openai.color },
+      { name: 'Gemini', value: Math.round(10.5 * tokenFactor * 10) / 10, cost: 10.5 * tokenFactor * 1.2, fill: aiConfig.gemini.color },
+      { name: 'Claude', value: Math.round(2.1 * tokenFactor * 10) / 10, cost: 2.1 * tokenFactor * 12.0, fill: aiConfig.claude.color },
+      { name: 'Groq', value: Math.round(15.8 * tokenFactor * 10) / 10, cost: 15.8 * tokenFactor * 0.3, fill: aiConfig.groq.color }
+    ];
+  }, [tokenFactor]);
 
-  const awsMonthlyData = [
-    { name: 'EC2', cost: 320.00 },
-    { name: 'EKS', cost: 380.00 },
-    { name: 'RDS', cost: 215.00 },
-    { name: 'S3', cost: 98.50 },
-    { name: 'Networking', cost: 152.00 },
-  ];
+  const aiMonthlyData = useMemo(() => {
+    return [
+      { name: 'OpenAI', value: Math.round(22.4 * tokenFactor * 10) / 10, cost: 22.4 * tokenFactor * 4.5, fill: aiConfig.openai.color },
+      { name: 'Gemini', value: Math.round(41.0 * tokenFactor * 10) / 10, cost: 41.0 * tokenFactor * 1.2, fill: aiConfig.gemini.color },
+      { name: 'Claude', value: Math.round(9.5 * tokenFactor * 10) / 10, cost: 9.5 * tokenFactor * 12.0, fill: aiConfig.claude.color },
+      { name: 'Groq', value: Math.round(68.0 * tokenFactor * 10) / 10, cost: 68.0 * tokenFactor * 0.3, fill: aiConfig.groq.color }
+    ];
+  }, [tokenFactor]);
 
-  // --- Terraform Costs Data ---
-  const tfWeeklyData = [
-    { workspace: 'Dev', cost: 62 },
-    { workspace: 'Staging', cost: 95 },
-    { workspace: 'Prod', cost: 280 }
-  ];
+  // 3. AWS Cost Projection (What this K8s cluster would cost on AWS EKS)
+  const awsWeeklyData = useMemo(() => {
+    const nodeCount = Math.ceil(activePodCount / 4) || 1;
+    return [
+      { name: 'EC2 Node', cost: nodeCount * 32.50 },
+      { name: 'EKS Control', cost: 23.50 }, // Base EKS control plane weekly fraction
+      { name: 'RDS Instance', cost: activeServiceCount * 14.20 },
+      { name: 'S3 Storage', cost: 8.50 },
+      { name: 'Network I/O', cost: activePodCount * 3.40 },
+    ];
+  }, [activePodCount, activeServiceCount]);
 
-  const tfMonthlyData = [
-    { workspace: 'Dev', cost: 248 },
-    { workspace: 'Staging', cost: 380 },
-    { workspace: 'Prod', cost: 1120 }
-  ];
+  const awsMonthlyData = useMemo(() => {
+    const nodeCount = Math.ceil(activePodCount / 4) || 1;
+    return [
+      { name: 'EC2 Node', cost: nodeCount * 130.00 },
+      { name: 'EKS Control', cost: 74.00 },
+      { name: 'RDS Instance', cost: activeServiceCount * 56.80 },
+      { name: 'S3 Storage', cost: 34.00 },
+      { name: 'Network I/O', cost: activePodCount * 13.60 },
+    ];
+  }, [activePodCount, activeServiceCount]);
+
+  // 4. Terraform Workspace Budget Allocation (split based on K8s namespaces)
+  const tfWeeklyData = useMemo(() => {
+    const pods = clusterTopology.pods;
+    const devPods = pods.filter(p => p.namespace === 'default' || p.namespace === 'dev').length || 2;
+    const stagingPods = pods.filter(p => p.namespace === 'staging').length || 1;
+    const systemPods = pods.filter(p => p.namespace && p.namespace.includes('system')).length || 2;
+    const total = devPods + stagingPods + systemPods;
+    const multiplier = 80 / (total || 1);
+
+    return [
+      { workspace: 'Geliştirme (Dev)', cost: Math.round(devPods * multiplier) },
+      { workspace: 'Sahneleme (Staging)', cost: Math.round(stagingPods * multiplier * 1.4) },
+      { workspace: 'Sistem (Prod)', cost: Math.round(systemPods * multiplier * 2.8) }
+    ];
+  }, [clusterTopology.pods]);
+
+  const tfMonthlyData = useMemo(() => {
+    const pods = clusterTopology.pods;
+    const devPods = pods.filter(p => p.namespace === 'default' || p.namespace === 'dev').length || 2;
+    const stagingPods = pods.filter(p => p.namespace === 'staging').length || 1;
+    const systemPods = pods.filter(p => p.namespace && p.namespace.includes('system')).length || 2;
+    const total = devPods + stagingPods + systemPods;
+    const multiplier = 320 / (total || 1);
+
+    return [
+      { workspace: 'Geliştirme (Dev)', cost: Math.round(devPods * multiplier) },
+      { workspace: 'Sahneleme (Staging)', cost: Math.round(stagingPods * multiplier * 1.4) },
+      { workspace: 'Sistem (Prod)', cost: Math.round(systemPods * multiplier * 2.8) }
+    ];
+  }, [clusterTopology.pods]);
+
+  // Compute total costs helper
+  const getSum = (arr, key) => arr.reduce((acc, curr) => acc + (curr[key] || 0), 0);
 
   return (
     <div className="p-8 h-full overflow-y-auto bg-slate-950 text-slate-100 pb-24 relative">
-      {/* Header section */}
+      {/* Header section (Professional, clean language) */}
       <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-900/75 pb-6">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent flex items-center gap-3">
-            <BarChart2 size={36} className="text-cyan-400 animate-pulse" />
-            Sistem Metrikleri & FinOps Dashboard
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent flex items-center gap-3">
+            <BarChart2 size={32} className="text-cyan-400" />
+            Altyapı Kaynak ve FinOps İzleme
           </h1>
           <p className="text-slate-400 mt-2 text-sm flex items-center gap-2">
             <Activity size={16} className="text-emerald-500 animate-pulse" />
-            Taki UI Grafik Bileşenleri ile Güçlendirilmiş Canlı İzleme Paneli.
+            Yerel sunucu donanım kullanımı ve Kubernetes küme kaynak istatistikleri.
           </p>
         </div>
 
-        {/* Global time range tabs */}
-        <div className="flex gap-1.5 p-1 bg-slate-900/60 border border-slate-800/80 rounded-xl glass">
-          {[
-            { id: 'real-time', label: 'Anlık Raporlar' },
-            { id: 'weekly', label: 'Haftalık Analiz' },
-            { id: 'monthly', label: 'Aylık Analiz' }
-          ].map(opt => (
-            <button
-              key={opt.id}
-              onClick={() => setTimeRange(opt.id)}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ${
-                timeRange === opt.id 
-                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' 
-                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+        {/* Live indicator badge */}
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-xs font-semibold">
+          <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
+          <span>{liveMetrics ? "CANLI CİHAZ BAĞLANTISI AKTİF" : "SİMÜLASYON VERİ AKIŞI"}</span>
         </div>
       </div>
 
@@ -286,17 +408,17 @@ export default function Stats() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
 
         {/* ========================================================
-            CARD 1: CPU USAGE (TAKI UI AREA CHART DEFAULT STYLE)
+            CARD 1: CPU USAGE (CANLI/HOST VERİLERİ)
            ======================================================== */}
         <Card>
           <CardHeader className="flex flex-row justify-between items-center pb-2">
             <div className="grid gap-1">
               <CardTitle className="flex items-center gap-2">
                 <Cpu size={20} className="text-cyan-400" />
-                Anlık CPU Kullanımı
+                İşlemci (CPU) Yükü
               </CardTitle>
               <CardDescription>
-                Son 30 saniye içindeki anlık CPU dalgalanması
+                Cihazın anlık CPU kullanım yüzdesi
               </CardDescription>
             </div>
             <span className="text-2xl font-mono font-bold text-cyan-400 bg-cyan-500/5 border border-cyan-500/10 px-3 py-1 rounded-xl">
@@ -336,24 +458,26 @@ export default function Stats() {
           </CardContent>
           <CardFooter className="flex-row items-center justify-between text-xs text-slate-400">
             <div className="flex items-center gap-1.5">
-              <Clock size={14} className="text-cyan-500 animate-spin" /> Veriler 2 saniyede bir güncelleniyor
+              <Clock size={14} className="text-cyan-500 animate-pulse" /> Veriler 2 saniyede bir güncelleniyor
             </div>
-            <div className="font-semibold text-slate-200">Ortalama: 45.2%</div>
+            <div className="font-semibold text-slate-200">
+              {liveMetrics ? `Cihaz: Raspberry Pi Server` : `Ortalama CPU: 42.5%`}
+            </div>
           </CardFooter>
         </Card>
 
         {/* ========================================================
-            CARD 2: RAM USAGE (TAKI UI AREA CHART DEFAULT STYLE)
+            CARD 2: RAM USAGE (CANLI/HOST VERİLERİ)
            ======================================================== */}
         <Card>
           <CardHeader className="flex flex-row justify-between items-center pb-2">
             <div className="grid gap-1">
               <CardTitle className="flex items-center gap-2">
                 <Cpu size={20} className="text-purple-400" />
-                Anlık RAM Kullanımı
+                Bellek (RAM) Tüketimi
               </CardTitle>
               <CardDescription>
-                Küme genelindeki anlık bellek tüketim yüzdesi
+                Cihazın anlık RAM kullanım yüzdesi ve durumu
               </CardDescription>
             </div>
             <span className="text-2xl font-mono font-bold text-purple-400 bg-purple-500/5 border border-purple-500/10 px-3 py-1 rounded-xl">
@@ -393,14 +517,17 @@ export default function Stats() {
           </CardContent>
           <CardFooter className="flex-row items-center justify-between text-xs text-slate-400">
             <div className="flex items-center gap-1.5">
-              <HardDrive size={14} className="text-purple-400" /> Limit Kapasitesi: 64 GB
+              <HardDrive size={14} className="text-purple-400" /> 
+              Sistem Kapasitesi: {liveMetrics ? `${liveMetrics.memTotal.toFixed(1)} GB` : `64 GB`}
             </div>
-            <div className="font-semibold text-slate-200">Aktif Tüketim: {(64 * currentRam / 100).toFixed(1)} GB</div>
+            <div className="font-semibold text-slate-200">
+              Aktif Tüketim: {liveMetrics ? `${liveMetrics.memUsed.toFixed(1)} GB` : `${(64 * currentRam / 100).toFixed(1)} GB`}
+            </div>
           </CardFooter>
         </Card>
 
         {/* ========================================================
-            CARD 3: NETWORK I/O & BOTTLECK (STACKED / MULTI AREA)
+            CARD 3: NETWORK I/O (CANLI/HOST TRAFİĞİ)
            ======================================================== */}
         <Card className="xl:col-span-2">
           <CardHeader className="flex flex-row justify-between items-start pb-2">
@@ -410,7 +537,7 @@ export default function Stats() {
                 Ağ (Network) Giriş/Çıkış Hızları & Darboğaz Uyarıları
               </CardTitle>
               <CardDescription>
-                Küme genelindeki anlık veri transfer oranları (Rx: Gelen, Tx: Giden)
+                Cihaz arayüzlerindeki veri transfer oranları (Rx: Gelen, Tx: Giden)
               </CardDescription>
             </div>
             <span className={`text-[10px] font-bold px-3 py-1 rounded-full border ${
@@ -418,7 +545,7 @@ export default function Stats() {
                 ? 'bg-rose-500/10 text-rose-400 border-rose-500/30 animate-pulse' 
                 : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
             }`}>
-              {isBottleneck ? 'AĞ DARBOĞAZI ALGILANDI' : 'AĞ BAĞLANTISI STABİL'}
+              {isBottleneck ? 'AĞ YOĞUNLUĞU UYARISI' : 'AĞ BAĞLANTISI NORMAL'}
             </span>
           </CardHeader>
           <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -489,7 +616,7 @@ export default function Stats() {
         </Card>
 
         {/* ========================================================
-            CARD 4: ELECTRICITY CONSUMPTION (BAR CHART LABEL STİLİ)
+            CARD 4: ELECTRICITY CONSUMPTION (WITH INDEPENDENT TOGGLE)
            ======================================================== */}
         <Card>
           <CardHeader>
@@ -497,22 +624,35 @@ export default function Stats() {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <Zap size={20} className="text-amber-400" />
-                  Elektrik Tüketimi
+                  Sunucu Elektrik Tüketimi
                 </CardTitle>
                 <CardDescription>
-                  {timeRange === 'monthly' ? 'Son 6 aylık elektrik sarfiyatı (kWh)' : 'Bu haftaki günlük elektrik sarfiyatı (kWh)'}
+                  Donanım elektrik yükü ve tahmini sarfiyatı (kWh)
                 </CardDescription>
               </div>
-              <span className="text-xs text-slate-400 font-mono bg-slate-950 px-2.5 py-1 rounded border border-slate-850">
-                Birim Fiyat: $0.15/kWh
-              </span>
+              
+              {/* Local Selector */}
+              <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
+                <button 
+                  onClick={() => setElecTimeRange('weekly')} 
+                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${elecTimeRange === 'weekly' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-slate-400'}`}
+                >
+                  Haftalık
+                </button>
+                <button 
+                  onClick={() => setElecTimeRange('monthly')} 
+                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${elecTimeRange === 'monthly' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-slate-400'}`}
+                >
+                  Aylık
+                </button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
             <ChartContainer config={electricityConfig} className="h-56">
               <BarChart
                 accessibilityLayer
-                data={timeRange === 'monthly' ? electricityMonthlyData : electricityWeeklyData}
+                data={elecTimeRange === 'monthly' ? electricityMonthlyData : electricityWeeklyData}
                 margin={{ top: 20 }}
               >
                 <CartesianGrid vertical={false} stroke="#1e293b" />
@@ -539,26 +679,46 @@ export default function Stats() {
           </CardContent>
           <CardFooter className="flex-col items-start gap-2 text-xs text-slate-400">
             <div className="flex gap-2 items-center leading-none font-medium text-slate-200">
-              <TrendingUp className="h-4 w-4 text-emerald-400" /> Geçen döneme göre elektrik tüketimi %5.2 azaldı
+              <TrendingUp className="h-4 w-4 text-emerald-400" /> Aktif Küme Pod Sayısı: {activePodCount} (Tüketim ağırlığı dinamiktir)
             </div>
             <div className="text-slate-500">
-              Tahmini Maliyet: <span className="text-emerald-400 font-bold font-mono">${timeRange === 'monthly' ? '1,428.00' : '386.20'}</span>
+              Tahmini Maliyet: <span className="text-emerald-400 font-bold font-mono">${getSum(elecTimeRange === 'monthly' ? electricityMonthlyData : electricityWeeklyData, 'cost').toFixed(2)}</span>
             </div>
           </CardFooter>
         </Card>
 
         {/* ========================================================
-            CARD 5: AI TOKEN USAGE (PIE CHART STİLİ)
+            CARD 5: AI TOKEN USAGE (WITH INDEPENDENT TOGGLE)
            ======================================================== */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Layers size={20} className="text-indigo-400" />
-              Yapay Zeka Token Harcamaları
-            </CardTitle>
-            <CardDescription>
-              {timeRange === 'monthly' ? 'Aylık yapay zeka kullanım hacmi kırılımı (Milyon Token)' : 'Haftalık yapay zeka kullanım hacmi kırılımı (Milyon Token)'}
-            </CardDescription>
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Layers size={20} className="text-indigo-400" />
+                  Yapay Zeka Token Harcamaları
+                </CardTitle>
+                <CardDescription>
+                  Çözücü (Solver) modülü yapay zeka sağlayıcısı kullanım oranları
+                </CardDescription>
+              </div>
+
+              {/* Local Selector */}
+              <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
+                <button 
+                  onClick={() => setAiTimeRange('weekly')} 
+                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${aiTimeRange === 'weekly' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400'}`}
+                >
+                  Haftalık
+                </button>
+                <button 
+                  onClick={() => setAiTimeRange('monthly')} 
+                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${aiTimeRange === 'monthly' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400'}`}
+                >
+                  Aylık
+                </button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="flex flex-col sm:flex-row justify-around items-center gap-6 pb-2">
             
@@ -567,7 +727,7 @@ export default function Stats() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={timeRange === 'monthly' ? aiMonthlyData : aiWeeklyData}
+                    data={aiTimeRange === 'monthly' ? aiMonthlyData : aiWeeklyData}
                     cx="50%"
                     cy="50%"
                     innerRadius={55}
@@ -575,7 +735,7 @@ export default function Stats() {
                     paddingAngle={4}
                     dataKey="value"
                   >
-                    {(timeRange === 'monthly' ? aiMonthlyData : aiWeeklyData).map((entry, index) => (
+                    {(aiTimeRange === 'monthly' ? aiMonthlyData : aiWeeklyData).map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.fill} />
                     ))}
                   </Pie>
@@ -585,14 +745,14 @@ export default function Stats() {
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Toplam</span>
                 <span className="text-base font-mono font-bold text-slate-200">
-                  {timeRange === 'monthly' ? '171.6M' : '38.8M'}
+                  {getSum(aiTimeRange === 'monthly' ? aiMonthlyData : aiWeeklyData, 'value').toFixed(1)}M
                 </span>
               </div>
             </div>
 
             {/* Detail stats legend table */}
             <div className="flex-1 flex flex-col gap-2.5 w-full">
-              {(timeRange === 'monthly' ? aiMonthlyData : aiWeeklyData).map((prov, i) => (
+              {(aiTimeRange === 'monthly' ? aiMonthlyData : aiWeeklyData).map((prov, i) => (
                 <div key={i} className="p-3 bg-slate-950/70 border border-slate-900/60 rounded-xl flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: prov.fill }}></div>
@@ -608,29 +768,49 @@ export default function Stats() {
 
           </CardContent>
           <CardFooter className="text-xs text-slate-400 justify-between">
-            <span>En yüksek kullanım: <b>Groq API</b> (Hız öncelikli)</span>
-            <span className="text-emerald-500 font-bold font-mono">Toplam: ${timeRange === 'monthly' ? '430.30' : '97.70'}</span>
+            <span>Çözülen Olay Kaydı Sayısı: <b>{activeEventCount}</b></span>
+            <span className="text-emerald-500 font-bold font-mono">Toplam Yapay Zeka Gideri: ${getSum(aiTimeRange === 'monthly' ? aiMonthlyData : aiWeeklyData, 'cost').toFixed(2)}</span>
           </CardFooter>
         </Card>
 
         {/* ========================================================
-            CARD 6: AWS INFRASTRUCTURE COST (BAR CHART STİLİ)
+            CARD 6: AWS PROJECTION COST (WITH INDEPENDENT TOGGLE)
            ======================================================== */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <DollarSign size={20} className="text-indigo-400" />
-              AWS Altyapı FinOps Giderleri
-            </CardTitle>
-            <CardDescription>
-              AWS servislerinin {timeRange === 'monthly' ? 'aylık' : 'haftalık'} fatura tahmin kırılımı ($)
-            </CardDescription>
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <DollarSign size={20} className="text-indigo-400" />
+                  AWS EKS Projeksiyon Giderleri
+                </CardTitle>
+                <CardDescription>
+                  Mevcut yerel k3s küme yüklerinizin AWS altyapısındaki tahmini karşılığı ($)
+                </CardDescription>
+              </div>
+
+              {/* Local Selector */}
+              <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
+                <button 
+                  onClick={() => setAwsTimeRange('weekly')} 
+                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${awsTimeRange === 'weekly' ? 'bg-indigo-50/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400'}`}
+                >
+                  Haftalık
+                </button>
+                <button 
+                  onClick={() => setAwsTimeRange('monthly')} 
+                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${awsTimeRange === 'monthly' ? 'bg-indigo-50/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400'}`}
+                >
+                  Aylık
+                </button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <ChartContainer config={awsConfig} className="h-56">
               <BarChart
                 accessibilityLayer
-                data={timeRange === 'monthly' ? awsMonthlyData : awsWeeklyData}
+                data={awsTimeRange === 'monthly' ? awsMonthlyData : awsWeeklyData}
                 margin={{ top: 20 }}
               >
                 <CartesianGrid vertical={false} stroke="#1e293b" />
@@ -657,35 +837,55 @@ export default function Stats() {
             </ChartContainer>
           </CardContent>
           <CardFooter className="justify-between text-xs text-slate-400">
-            <span>En yüksek maliyet: <b>EKS (Kubernetes)</b></span>
-            <span className="font-semibold text-slate-200">Toplam AWS Maliyeti: <span className="text-emerald-400 font-bold font-mono">${timeRange === 'monthly' ? '1,166.00' : '286.70'}</span></span>
+            <span>Projeksiyon Pod / Servis: <b>{activePodCount} / {activeServiceCount}</b></span>
+            <span className="font-semibold text-slate-200">Toplam Bulut Eşdeğeri: <span className="text-emerald-400 font-bold font-mono">${getSum(awsTimeRange === 'monthly' ? awsMonthlyData : awsWeeklyData, 'cost').toFixed(2)}</span></span>
           </CardFooter>
         </Card>
 
         {/* ========================================================
-            CARD 7: TERRAFORM WORKSPACE ESTIMATES (RADAR CHART STİLİ)
+            CARD 7: TERRAFORM WORKSPACE ESTIMATES (WITH INDEPENDENT TOGGLE)
            ======================================================== */}
         <Card>
-          <CardHeader className="items-center">
-            <CardTitle className="flex items-center gap-2">
-              <Layers size={20} className="text-fuchsia-400" />
-              Terraform Workspace Bütçe Dağılımı
-            </CardTitle>
-            <CardDescription>
-              Workspace bazında planlanan ve ayrılan {timeRange === 'monthly' ? 'aylık' : 'haftalık'} bütçeler ($)
-            </CardDescription>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Layers size={20} className="text-fuchsia-400" />
+                  Terraform Workspace Dağılımı
+                </CardTitle>
+                <CardDescription>
+                  Namespace dağılımlarına göre ayrıştırılmış bütçe projeksiyonu ($)
+                </CardDescription>
+              </div>
+
+              {/* Local Selector */}
+              <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
+                <button 
+                  onClick={() => setTfTimeRange('weekly')} 
+                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${tfTimeRange === 'weekly' ? 'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20' : 'text-slate-400'}`}
+                >
+                  Haftalık
+                </button>
+                <button 
+                  onClick={() => setTfTimeRange('monthly')} 
+                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${tfTimeRange === 'monthly' ? 'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20' : 'text-slate-400'}`}
+                >
+                  Aylık
+                </button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="pb-0">
             <ChartContainer
               config={tfConfig}
               className="mx-auto aspect-square max-h-[220px]"
             >
-              <RadarChart data={timeRange === 'monthly' ? tfMonthlyData : tfWeeklyData}>
+              <RadarChart data={tfTimeRange === 'monthly' ? tfMonthlyData : tfWeeklyData}>
                 <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
                 <PolarAngleAxis dataKey="workspace" tick={{ fill: '#94a3b8', fontSize: 11 }} />
                 <PolarGrid stroke="#334155" />
                 <Radar
-                  name="Terraform Altyapı Maliyeti"
+                  name="Planlanan Altyapı Bütçesi"
                   dataKey="cost"
                   fill="var(--color-cost)"
                   fillOpacity={0.35}
@@ -701,10 +901,10 @@ export default function Stats() {
           </CardContent>
           <CardFooter className="flex-col gap-2 text-xs text-slate-400">
             <div className="flex items-center gap-2 leading-none font-medium text-slate-200">
-              <TrendingUp className="h-4 w-4 text-emerald-400" /> Terraform planlarında sapma oranı %4.8 olarak ölçüldü
+              <TrendingUp className="h-4 w-4 text-emerald-400" /> Kümedeki aktif namespace'ler baz alınmıştır.
             </div>
             <div className="text-slate-500 font-mono text-[10px] text-center w-full">
-              Dev: ${timeRange === 'monthly' ? '248' : '62'} | Staging: ${timeRange === 'monthly' ? '380' : '95'} | Prod: ${timeRange === 'monthly' ? '1,120' : '280'}
+              Dev: ${getSum(tfTimeRange === 'monthly' ? tfMonthlyData : tfWeeklyData, 'cost') > 0 ? (tfTimeRange === 'monthly' ? tfMonthlyData[0].cost : tfWeeklyData[0].cost) : 0} | Staging: ${getSum(tfTimeRange === 'monthly' ? tfMonthlyData : tfWeeklyData, 'cost') > 0 ? (tfTimeRange === 'monthly' ? tfMonthlyData[1].cost : tfWeeklyData[1].cost) : 0} | Prod: ${getSum(tfTimeRange === 'monthly' ? tfMonthlyData : tfWeeklyData, 'cost') > 0 ? (tfTimeRange === 'monthly' ? tfMonthlyData[2].cost : tfWeeklyData[2].cost) : 0}
             </div>
           </CardFooter>
         </Card>
@@ -713,4 +913,3 @@ export default function Stats() {
     </div>
   );
 }
-
