@@ -29,7 +29,7 @@ spec:
       containers:
       - name: app
         image: node:alpine
-        command: ["node", "-e", "const a = []; setInterval(() => a.push(new Array(1000000).fill('crash')), 10);"]
+        command: ["node", "-e", "const a = new Array(10000000).fill('data'); console.log('Memory allocated, idling...'); setInterval(() => {}, 1000);"]
         resources:
           limits:
             memory: "15Mi" # Node.js 15MB ile çalışamaz, script anında OOM yer!
