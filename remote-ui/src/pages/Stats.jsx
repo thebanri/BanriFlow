@@ -62,7 +62,6 @@ export default function Stats() {
 
   // Live Cluster Data & Log Counts from Go API
   const [clusterTopology, setClusterTopology] = useState({ pods: [], services: [] });
-  const [eventCount, setEventCount] = useState(0);
   const [liveMetrics, setLiveMetrics] = useState(null);
   
   const liveMetricsRef = useRef(null);
@@ -75,7 +74,7 @@ export default function Stats() {
     { id: 1, time: 'Init', type: 'Sistem Başlatıldı', desc: 'Canlı donanım ve ağ dinleyicileri aktif.', severity: 'warning' },
   ]);
 
-  // --- Fetch Topology & Logs from Backend ---
+  // --- Fetch Topology from Backend ---
   useEffect(() => {
     const fetchTopology = () => {
       const url = `http://${window.location.hostname}:3005/api/topology`;
@@ -90,27 +89,12 @@ export default function Stats() {
         .catch(err => console.warn("Topology API not reachable. Using fallback values.", err));
     };
 
-    const fetchLogs = () => {
-      const url = `http://${window.location.hostname}:3005/api/logs/history`;
-      axios.get(url)
-        .then(res => {
-          if (res.data && Array.isArray(res.data)) {
-            setEventCount(res.data.length);
-          }
-        })
-        .catch(err => console.warn("Log history API not reachable. Using fallback values.", err));
-    };
-
     fetchTopology();
-    fetchLogs();
-    const interval = setInterval(() => {
-      fetchTopology();
-      fetchLogs();
-    }, 8000);
+    const interval = setInterval(fetchTopology, 8000);
     return () => clearInterval(interval);
   }, []);
 
-  // --- Fetch Live Host OS Metrics (CPU/RAM/Net) from Go Backend ---
+  // --- Fetch Live Host OS Metrics & Chart Data from Go Backend ---
   useEffect(() => {
     const fetchSystemMetrics = () => {
       const url = `http://${window.location.hostname}:3005/api/system/metrics`;
@@ -296,63 +280,83 @@ export default function Stats() {
     }
   };
 
-  // --- Dynamic calculations based on live pod & event counts ---
-  const activePodCount = clusterTopology.pods.length || 4;
-  const activeServiceCount = clusterTopology.services.length || 3;
-  const activeEventCount = eventCount || 8;
-
-  // 1. Electricity Usage Data (real Raspberry Pi scale: ~5W average per Pi, so ~0.12 kWh per day per node)
+  // --- Fetch Chart Data directly from liveMetrics (provided by server) or fallback locally ---
   const electricityWeeklyData = useMemo(() => {
-    const nodeCount = Math.max(1, Math.ceil(activePodCount / 8));
-    const cpuFactor = 0.8 + (currentCpu / 100) * 0.4; 
-    const dailyBase = 0.12 * nodeCount * cpuFactor; 
-
-    return [
-      { name: 'Pzt', kwh: parseFloat((dailyBase * 0.95).toFixed(3)), cost: parseFloat((dailyBase * 0.95 * 0.15).toFixed(4)) },
-      { name: 'Sal', kwh: parseFloat((dailyBase * 1.05).toFixed(3)), cost: parseFloat((dailyBase * 1.05 * 0.15).toFixed(4)) },
-      { name: 'Çar', kwh: parseFloat((dailyBase * 1.10).toFixed(3)), cost: parseFloat((dailyBase * 1.10 * 0.15).toFixed(4)) },
-      { name: 'Per', kwh: parseFloat((dailyBase * 1.00).toFixed(3)), cost: parseFloat((dailyBase * 1.00 * 0.15).toFixed(4)) },
-      { name: 'Cum', kwh: parseFloat((dailyBase * 1.20).toFixed(3)), cost: parseFloat((dailyBase * 1.20 * 0.15).toFixed(4)) },
-      { name: 'Cmt', kwh: parseFloat((dailyBase * 0.85).toFixed(3)), cost: parseFloat((dailyBase * 0.85 * 0.15).toFixed(4)) },
-      { name: 'Paz', kwh: parseFloat((dailyBase * 0.80).toFixed(3)), cost: parseFloat((dailyBase * 0.80 * 0.15).toFixed(4)) },
+    return liveMetrics?.electricityWeekly || [
+      { name: 'Pzt', kwh: 0.12, cost: 0.018 },
+      { name: 'Sal', kwh: 0.13, cost: 0.0195 },
+      { name: 'Çar', kwh: 0.14, cost: 0.021 },
+      { name: 'Per', kwh: 0.12, cost: 0.018 },
+      { name: 'Cum', kwh: 0.15, cost: 0.0225 },
+      { name: 'Cmt', kwh: 0.11, cost: 0.0165 },
+      { name: 'Paz', kwh: 0.10, cost: 0.015 },
     ];
-  }, [activePodCount, currentCpu]);
+  }, [liveMetrics]);
 
   const electricityMonthlyData = useMemo(() => {
-    const nodeCount = Math.max(1, Math.ceil(activePodCount / 8));
-    const monthlyBase = 3.6 * nodeCount; 
-
-    return [
-      { name: 'Oca', kwh: parseFloat((monthlyBase * 0.96).toFixed(2)), cost: parseFloat((monthlyBase * 0.96 * 0.15).toFixed(3)) },
-      { name: 'Şub', kwh: parseFloat((monthlyBase * 0.92).toFixed(2)), cost: parseFloat((monthlyBase * 0.92 * 0.15).toFixed(3)) },
-      { name: 'Mar', kwh: parseFloat((monthlyBase * 1.02).toFixed(2)), cost: parseFloat((monthlyBase * 1.02 * 0.15).toFixed(3)) },
-      { name: 'Nis', kwh: parseFloat((monthlyBase * 0.98).toFixed(2)), cost: parseFloat((monthlyBase * 0.98 * 0.15).toFixed(3)) },
-      { name: 'May', kwh: parseFloat((monthlyBase * 1.05).toFixed(2)), cost: parseFloat((monthlyBase * 1.05 * 0.15).toFixed(3)) },
-      { name: 'Haz', kwh: parseFloat((monthlyBase * 1.12).toFixed(2)), cost: parseFloat((monthlyBase * 1.12 * 0.15).toFixed(3)) },
+    return liveMetrics?.electricityMonthly || [
+      { name: 'Oca', kwh: 3.6, cost: 0.54 },
+      { name: 'Şub', kwh: 3.4, cost: 0.51 },
+      { name: 'Mar', kwh: 3.8, cost: 0.57 },
+      { name: 'Nis', kwh: 3.7, cost: 0.555 },
+      { name: 'May', kwh: 3.9, cost: 0.585 },
+      { name: 'Haz', kwh: 4.1, cost: 0.615 },
     ];
-  }, [activePodCount]);
-
-  // 2. AI Token Usage (scales with error log events processed by Solver)
-  // For a single solver run, it uses ~10k-20k tokens. So we scale as Thousands/Millions.
-  const tokenFactor = 0.5 + (activeEventCount * 0.15); 
+  }, [liveMetrics]);
 
   const aiWeeklyData = useMemo(() => {
-    return [
-      { name: 'OpenAI', value: parseFloat((0.085 * tokenFactor).toFixed(3)), cost: 0.085 * tokenFactor * 5.0, fill: aiConfig.openai.color },
-      { name: 'Gemini', value: parseFloat((0.240 * tokenFactor).toFixed(3)), cost: 0.240 * tokenFactor * 0.15, fill: aiConfig.gemini.color },
-      { name: 'Claude', value: parseFloat((0.035 * tokenFactor).toFixed(3)), cost: 0.035 * tokenFactor * 15.0, fill: aiConfig.claude.color },
-      { name: 'Groq', value: parseFloat((0.450 * tokenFactor).toFixed(3)), cost: 0.450 * tokenFactor * 0.10, fill: aiConfig.groq.color }
+    return liveMetrics?.aiWeekly || [
+      { name: 'OpenAI', value: 0.085, cost: 0.425, fill: aiConfig.openai.color },
+      { name: 'Gemini', value: 0.240, cost: 0.036, fill: aiConfig.gemini.color },
+      { name: 'Claude', value: 0.035, cost: 0.525, fill: aiConfig.claude.color },
+      { name: 'Groq', value: 0.450, cost: 0.045, fill: aiConfig.groq.color }
     ];
-  }, [tokenFactor]);
+  }, [liveMetrics]);
 
   const aiMonthlyData = useMemo(() => {
-    return [
-      { name: 'OpenAI', value: parseFloat((0.360 * tokenFactor).toFixed(3)), cost: 0.360 * tokenFactor * 5.0, fill: aiConfig.openai.color },
-      { name: 'Gemini', value: parseFloat((0.980 * tokenFactor).toFixed(3)), cost: 0.980 * tokenFactor * 0.15, fill: aiConfig.gemini.color },
-      { name: 'Claude', value: parseFloat((0.140 * tokenFactor).toFixed(3)), cost: 0.140 * tokenFactor * 15.0, fill: aiConfig.claude.color },
-      { name: 'Groq', value: parseFloat((1.850 * tokenFactor).toFixed(3)), cost: 1.850 * tokenFactor * 0.10, fill: aiConfig.groq.color }
+    return liveMetrics?.aiMonthly || [
+      { name: 'OpenAI', value: 0.360, cost: 1.80, fill: aiConfig.openai.color },
+      { name: 'Gemini', value: 0.980, cost: 0.147, fill: aiConfig.gemini.color },
+      { name: 'Claude', value: 0.140, cost: 2.10, fill: aiConfig.claude.color },
+      { name: 'Groq', value: 1.850, cost: 0.185, fill: aiConfig.groq.color }
     ];
-  }, [tokenFactor]);
+  }, [liveMetrics]);
+
+  const awsWeeklyData = useMemo(() => {
+    return liveMetrics?.awsWeekly || [
+      { name: 'EC2 Node', cost: 32.50 },
+      { name: 'EKS Control', cost: 23.50 },
+      { name: 'RDS Instance', cost: 14.20 },
+      { name: 'S3 Storage', cost: 8.50 },
+      { name: 'Network I/O', cost: 3.40 },
+    ];
+  }, [liveMetrics]);
+
+  const awsMonthlyData = useMemo(() => {
+    return liveMetrics?.awsMonthly || [
+      { name: 'EC2 Node', cost: 130.00 },
+      { name: 'EKS Control', cost: 74.00 },
+      { name: 'RDS Instance', cost: 56.80 },
+      { name: 'S3 Storage', cost: 34.00 },
+      { name: 'Network I/O', cost: 13.60 },
+    ];
+  }, [liveMetrics]);
+
+  const tfWeeklyData = useMemo(() => {
+    return liveMetrics?.tfWeekly || [
+      { workspace: 'Geliştirme (Dev)', cost: 20 },
+      { workspace: 'Sahneleme (Staging)', cost: 30 },
+      { workspace: 'Sistem (Prod)', cost: 50 }
+    ];
+  }, [liveMetrics]);
+
+  const tfMonthlyData = useMemo(() => {
+    return liveMetrics?.tfMonthly || [
+      { workspace: 'Geliştirme (Dev)', cost: 80 },
+      { workspace: 'Sahneleme (Staging)', cost: 120 },
+      { workspace: 'Sistem (Prod)', cost: 200 }
+    ];
+  }, [liveMetrics]);
 
   // Helper formatting function for tokens (displays K or M dynamically)
   const formatTokens = (val) => {
@@ -362,59 +366,9 @@ export default function Stats() {
     return `${(val * 1000).toFixed(0)}K`;
   };
 
-  // 3. AWS Cost Projection (What this K8s cluster would cost on AWS EKS)
-  const awsWeeklyData = useMemo(() => {
-    const nodeCount = Math.ceil(activePodCount / 4) || 1;
-    return [
-      { name: 'EC2 Node', cost: nodeCount * 32.50 },
-      { name: 'EKS Control', cost: 23.50 }, 
-      { name: 'RDS Instance', cost: activeServiceCount * 14.20 },
-      { name: 'S3 Storage', cost: 8.50 },
-      { name: 'Network I/O', cost: activePodCount * 3.40 },
-    ];
-  }, [activePodCount, activeServiceCount]);
-
-  const awsMonthlyData = useMemo(() => {
-    const nodeCount = Math.ceil(activePodCount / 4) || 1;
-    return [
-      { name: 'EC2 Node', cost: nodeCount * 130.00 },
-      { name: 'EKS Control', cost: 74.00 },
-      { name: 'RDS Instance', cost: activeServiceCount * 56.80 },
-      { name: 'S3 Storage', cost: 34.00 },
-      { name: 'Network I/O', cost: activePodCount * 13.60 },
-    ];
-  }, [activePodCount, activeServiceCount]);
-
-  // 4. Terraform Workspace Budget Allocation (split based on K8s namespaces)
-  const tfWeeklyData = useMemo(() => {
-    const pods = clusterTopology.pods;
-    const devPods = pods.filter(p => p.namespace === 'default' || p.namespace === 'dev').length || 2;
-    const stagingPods = pods.filter(p => p.namespace === 'staging').length || 1;
-    const systemPods = pods.filter(p => p.namespace && p.namespace.includes('system')).length || 2;
-    const total = devPods + stagingPods + systemPods;
-    const multiplier = 80 / (total || 1);
-
-    return [
-      { workspace: 'Geliştirme (Dev)', cost: Math.round(devPods * multiplier) },
-      { workspace: 'Sahneleme (Staging)', cost: Math.round(stagingPods * multiplier * 1.4) },
-      { workspace: 'Sistem (Prod)', cost: Math.round(systemPods * multiplier * 2.8) }
-    ];
-  }, [clusterTopology.pods]);
-
-  const tfMonthlyData = useMemo(() => {
-    const pods = clusterTopology.pods;
-    const devPods = pods.filter(p => p.namespace === 'default' || p.namespace === 'dev').length || 2;
-    const stagingPods = pods.filter(p => p.namespace === 'staging').length || 1;
-    const systemPods = pods.filter(p => p.namespace && p.namespace.includes('system')).length || 2;
-    const total = devPods + stagingPods + systemPods;
-    const multiplier = 320 / (total || 1);
-
-    return [
-      { workspace: 'Geliştirme (Dev)', cost: Math.round(devPods * multiplier) },
-      { workspace: 'Sahneleme (Staging)', cost: Math.round(stagingPods * multiplier * 1.4) },
-      { workspace: 'Sistem (Prod)', cost: Math.round(systemPods * multiplier * 2.8) }
-    ];
-  }, [clusterTopology.pods]);
+  const activePodCount = liveMetrics?.podCount || clusterTopology.pods.length || 4;
+  const activeServiceCount = liveMetrics?.svcCount || clusterTopology.services.length || 3;
+  const activeEventCount = liveMetrics?.eventCount || 8;
 
   // Compute total costs helper
   const getSum = (arr, key) => arr.reduce((acc, curr) => acc + (curr[key] || 0), 0);
@@ -719,7 +673,7 @@ export default function Stats() {
               <TrendingUp className="h-4 w-4 text-emerald-400" /> Aktif Küme Pod Sayısı: {activePodCount} (Tüketim ağırlığı dinamiktir)
             </div>
             <div className="text-slate-500">
-              Tahmini Maliyet: <span className="text-emerald-400 font-bold font-mono">${getSum(elecTimeRange === 'monthly' ? electricityMonthlyData : electricityWeeklyData, 'cost').toFixed(3)}</span>
+              Tahmini Maliyet: <span className="text-emerald-400 font-bold font-mono">${getSum(elecTimeRange === 'monthly' ? electricityMonthlyData : electricityWeeklyData, 'cost').toFixed(4)}</span>
             </div>
           </CardFooter>
         </Card>

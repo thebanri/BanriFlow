@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -177,6 +178,103 @@ var serveCmd = &cobra.Command{
 			rx, tx := getNetworkBandwidth()
 			diskUsed, diskTotal := getDiskUsage()
 
+			// Get live Kubernetes counts
+			podCount := 4
+			svcCount := 3
+			eventCount := 8
+
+			if data, err := cluster.FetchGraphData(c.Context()); err == nil && data != nil {
+				pods := 0
+				svcs := 0
+				for _, node := range data.Nodes {
+					if node.Group == "pod" {
+						pods++
+					} else if node.Group == "service" {
+						svcs++
+					}
+				}
+				if pods > 0 {
+					podCount = pods
+				}
+				if svcs > 0 {
+					svcCount = svcs
+				}
+			}
+
+			// Get recent event count
+			if events := cluster.GetRecentEvents(7); events != nil {
+				eventCount = len(events)
+			}
+
+			// 1. Electricity calculation (RPi scale: 0.12 kWh per day per node/pod group)
+			nodeCount := (podCount / 8) + 1
+			dailyBase := 0.12 * float64(nodeCount) * (0.8 + (cpu / 100) * 0.4)
+			monthlyBase := 3.6 * float64(nodeCount)
+
+			weeklyElectricity := []fiber.Map{
+				{"name": "Pzt", "kwh": mathRound(dailyBase * 0.95, 3), "cost": mathRound(dailyBase * 0.95 * 0.15, 4)},
+				{"name": "Sal", "kwh": mathRound(dailyBase * 1.05, 3), "cost": mathRound(dailyBase * 1.05 * 0.15, 4)},
+				{"name": "Çar", "kwh": mathRound(dailyBase * 1.10, 3), "cost": mathRound(dailyBase * 1.10 * 0.15, 4)},
+				{"name": "Per", "kwh": mathRound(dailyBase * 1.00, 3), "cost": mathRound(dailyBase * 1.00 * 0.15, 4)},
+				{"name": "Cum", "kwh": mathRound(dailyBase * 1.20, 3), "cost": mathRound(dailyBase * 1.20 * 0.15, 4)},
+				{"name": "Cmt", "kwh": mathRound(dailyBase * 0.85, 3), "cost": mathRound(dailyBase * 0.85 * 0.15, 4)},
+				{"name": "Paz", "kwh": mathRound(dailyBase * 0.80, 3), "cost": mathRound(dailyBase * 0.80 * 0.15, 4)},
+			}
+
+			monthlyElectricity := []fiber.Map{
+				{"name": "Oca", "kwh": mathRound(monthlyBase * 0.96, 2), "cost": mathRound(monthlyBase * 0.96 * 0.15, 3)},
+				{"name": "Şub", "kwh": mathRound(monthlyBase * 0.92, 2), "cost": mathRound(monthlyBase * 0.92 * 0.15, 3)},
+				{"name": "Mar", "kwh": mathRound(monthlyBase * 1.02, 2), "cost": mathRound(monthlyBase * 1.02 * 0.15, 3)},
+				{"name": "Nis", "kwh": mathRound(monthlyBase * 0.98, 2), "cost": mathRound(monthlyBase * 0.98 * 0.15, 3)},
+				{"name": "May", "kwh": mathRound(monthlyBase * 1.05, 2), "cost": mathRound(monthlyBase * 1.05 * 0.15, 3)},
+				{"name": "Haz", "kwh": mathRound(monthlyBase * 1.12, 2), "cost": mathRound(monthlyBase * 1.12 * 0.15, 3)},
+			}
+
+			// 2. AI Tokens (based on actual log event count)
+			tokenFactor := 0.5 + (float64(eventCount) * 0.15)
+			weeklyAI := []fiber.Map{
+				{"name": "OpenAI", "value": mathRound(0.085*tokenFactor, 3), "cost": mathRound(0.085*tokenFactor*5.0, 2), "fill": "#10b981"},
+				{"name": "Gemini", "value": mathRound(0.240*tokenFactor, 3), "cost": mathRound(0.240*tokenFactor*0.15, 2), "fill": "#6366f1"},
+				{"name": "Claude", "value": mathRound(0.035*tokenFactor, 3), "cost": mathRound(0.035*tokenFactor*15.0, 2), "fill": "#f97316"},
+				{"name": "Groq", "value": mathRound(0.450*tokenFactor, 3), "cost": mathRound(0.450*tokenFactor*0.10, 2), "fill": "#ef4444"},
+			}
+			monthlyAI := []fiber.Map{
+				{"name": "OpenAI", "value": mathRound(0.360*tokenFactor, 3), "cost": mathRound(0.360*tokenFactor*5.0, 2), "fill": "#10b981"},
+				{"name": "Gemini", "value": mathRound(0.980*tokenFactor, 3), "cost": mathRound(0.980*tokenFactor*0.15, 2), "fill": "#6366f1"},
+				{"name": "Claude", "value": mathRound(0.140*tokenFactor, 3), "cost": mathRound(0.140*tokenFactor*15.0, 2), "fill": "#f97316"},
+				{"name": "Groq", "value": mathRound(1.850*tokenFactor, 3), "cost": mathRound(1.850*tokenFactor*0.10, 2), "fill": "#ef4444"},
+			}
+
+			// 3. AWS Projections
+			eksNodeCount := (podCount / 4) + 1
+			weeklyAWS := []fiber.Map{
+				{"name": "EC2 Node", "cost": mathRound(float64(eksNodeCount)*32.50, 2)},
+				{"name": "EKS Control", "cost": 23.50},
+				{"name": "RDS Instance", "cost": mathRound(float64(svcCount)*14.20, 2)},
+				{"name": "S3 Storage", "cost": 8.50},
+				{"name": "Network I/O", "cost": mathRound(float64(podCount)*3.40, 2)},
+			}
+			monthlyAWS := []fiber.Map{
+				{"name": "EC2 Node", "cost": mathRound(float64(eksNodeCount)*130.00, 2)},
+				{"name": "EKS Control", "cost": 74.00},
+				{"name": "RDS Instance", "cost": mathRound(float64(svcCount)*56.80, 2)},
+				{"name": "S3 Storage", "cost": 34.00},
+				{"name": "Network I/O", "cost": mathRound(float64(podCount)*13.60, 2)},
+			}
+
+			// 4. Terraform Workspaces
+			tfMultiplier := 80.0 / float64(podCount)
+			weeklyTF := []fiber.Map{
+				{"workspace": "Geliştirme (Dev)", "cost": mathRound(2.0 * tfMultiplier, 0)},
+				{"workspace": "Sahneleme (Staging)", "cost": mathRound(1.0 * tfMultiplier * 1.4, 0)},
+				{"workspace": "Sistem (Prod)", "cost": mathRound(2.0 * tfMultiplier * 2.8, 0)},
+			}
+			monthlyTF := []fiber.Map{
+				{"workspace": "Geliştirme (Dev)", "cost": mathRound(2.0 * tfMultiplier * 4.0, 0)},
+				{"workspace": "Sahneleme (Staging)", "cost": mathRound(1.0 * tfMultiplier * 1.4 * 4.0, 0)},
+				{"workspace": "Sistem (Prod)", "cost": mathRound(2.0 * tfMultiplier * 2.8 * 4.0, 0)},
+			}
+
 			return c.JSON(fiber.Map{
 				"cpuPercent": cpu,
 				"memPercent": memPercent,
@@ -186,6 +284,21 @@ var serveCmd = &cobra.Command{
 				"netTxMBps":  tx,
 				"diskUsed":   diskUsed,
 				"diskTotal":  diskTotal,
+				"podCount":   podCount,
+				"svcCount":   svcCount,
+				"eventCount": eventCount,
+				// Electricity
+				"electricityWeekly":  weeklyElectricity,
+				"electricityMonthly": monthlyElectricity,
+				// AI Tokens
+				"aiWeekly":  weeklyAI,
+				"aiMonthly": monthlyAI,
+				// AWS Cost Projections
+				"awsWeekly":  weeklyAWS,
+				"awsMonthly": monthlyAWS,
+				// Terraform Workspaces
+				"tfWeekly":  weeklyTF,
+				"tfMonthly": monthlyTF,
 			})
 		})
 
@@ -389,4 +502,9 @@ func getDiskUsage() (float64, float64) {
 	totalBytes, _ := strconv.ParseFloat(fields[1], 64)
 	usedBytes, _ := strconv.ParseFloat(fields[2], 64)
 	return usedBytes / 1024 / 1024 / 1024, totalBytes / 1024 / 1024 / 1024
+}
+
+func mathRound(val float64, decimals int) float64 {
+	pow := math.Pow(10, float64(decimals))
+	return math.Round(val*pow) / pow
 }
