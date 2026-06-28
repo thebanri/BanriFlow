@@ -44,10 +44,10 @@ const generateInitialNetworkHistory = (points) => {
 
 export default function Stats() {
   // --- Local Card-level Time Range States ---
-  const [awsTimeRange, setAwsTimeRange] = useState('weekly'); // 'weekly' | 'monthly'
-  const [aiTimeRange, setAiTimeRange] = useState('weekly');   // 'weekly' | 'monthly'
-  const [tfTimeRange, setTfTimeRange] = useState('weekly');   // 'weekly' | 'monthly'
-  const [elecTimeRange, setElecTimeRange] = useState('weekly'); // 'weekly' | 'monthly'
+  const [awsTimeRange, setAwsTimeRange] = useState('weekly'); 
+  const [aiTimeRange, setAiTimeRange] = useState('weekly');   
+  const [tfTimeRange, setTfTimeRange] = useState('weekly');   
+  const [elecTimeRange, setElecTimeRange] = useState('weekly'); 
 
   // --- Real-time Systems Data State ---
   const [cpuHistory, setCpuHistory] = useState(() => generateInitialHistory(15));
@@ -121,7 +121,7 @@ export default function Stats() {
           }
         })
         .catch(err => {
-          setLiveMetrics(null); // Force simulation fallback
+          setLiveMetrics(null); 
         });
     };
 
@@ -172,7 +172,7 @@ export default function Stats() {
         setCpuHistory(prev => {
           const lastVal = prev[prev.length - 1]?.value || 30;
           const baseline = Math.min(20 + podCount * 4 + (hasErrorPod ? 25 : 0), 90);
-          const drift = Math.floor(Math.random() * 11) - 5; // -5% to +5%
+          const drift = Math.floor(Math.random() * 11) - 5; 
           let newVal = Math.min(Math.max(baseline + drift, 10), 98);
           return [...prev.slice(1), { time: timeNow, value: newVal }];
         });
@@ -218,6 +218,29 @@ export default function Stats() {
 
     return () => clearInterval(interval);
   }, [clusterTopology.pods]);
+
+  // --- Dynamic presence detection for AWS & Terraform ---
+  const hasAws = useMemo(() => {
+    const hasAwsPod = clusterTopology.pods.some(p => 
+      (p.name && p.name.toLowerCase().includes('aws')) || 
+      (p.name && p.name.toLowerCase().includes('eks')) ||
+      (p.namespace && p.namespace.toLowerCase().includes('aws'))
+    );
+    const hasAwsService = clusterTopology.services.some(s => 
+      (s.name && s.name.toLowerCase().includes('aws')) || 
+      (s.name && s.name.toLowerCase().includes('eks'))
+    );
+    return hasAwsPod || hasAwsService;
+  }, [clusterTopology]);
+
+  const hasTerraform = useMemo(() => {
+    const hasTfPod = clusterTopology.pods.some(p => 
+      (p.name && p.name.toLowerCase().includes('terraform')) || 
+      (p.name && p.name.toLowerCase().includes('tf-')) ||
+      (p.namespace && p.namespace.toLowerCase().includes('terraform'))
+    );
+    return hasTfPod;
+  }, [clusterTopology]);
 
   // --- Chart Configs ---
   const cpuConfig = {
@@ -278,59 +301,73 @@ export default function Stats() {
   const activeServiceCount = clusterTopology.services.length || 3;
   const activeEventCount = eventCount || 8;
 
-  // 1. Electricity Usage Data (scales with CPU load / pod density)
+  // 1. Electricity Usage Data (real Raspberry Pi scale: ~5W average per Pi, so ~0.12 kWh per day per node)
   const electricityWeeklyData = useMemo(() => {
-    const factor = 0.5 + (activePodCount / 8);
+    const nodeCount = Math.max(1, Math.ceil(activePodCount / 8));
+    const cpuFactor = 0.8 + (currentCpu / 100) * 0.4; 
+    const dailyBase = 0.12 * nodeCount * cpuFactor; 
+
     return [
-      { name: 'Pzt', kwh: Math.round(300 * factor), cost: Math.round(300 * factor * 0.15) },
-      { name: 'Sal', kwh: Math.round(340 * factor), cost: Math.round(340 * factor * 0.15) },
-      { name: 'Çar', kwh: Math.round(380 * factor), cost: Math.round(380 * factor * 0.15) },
-      { name: 'Per', kwh: Math.round(365 * factor), cost: Math.round(365 * factor * 0.15) },
-      { name: 'Cum', kwh: Math.round(410 * factor), cost: Math.round(410 * factor * 0.15) },
-      { name: 'Cmt', kwh: Math.round(290 * factor), cost: Math.round(290 * factor * 0.15) },
-      { name: 'Paz', kwh: Math.round(260 * factor), cost: Math.round(260 * factor * 0.15) },
+      { name: 'Pzt', kwh: parseFloat((dailyBase * 0.95).toFixed(3)), cost: parseFloat((dailyBase * 0.95 * 0.15).toFixed(4)) },
+      { name: 'Sal', kwh: parseFloat((dailyBase * 1.05).toFixed(3)), cost: parseFloat((dailyBase * 1.05 * 0.15).toFixed(4)) },
+      { name: 'Çar', kwh: parseFloat((dailyBase * 1.10).toFixed(3)), cost: parseFloat((dailyBase * 1.10 * 0.15).toFixed(4)) },
+      { name: 'Per', kwh: parseFloat((dailyBase * 1.00).toFixed(3)), cost: parseFloat((dailyBase * 1.00 * 0.15).toFixed(4)) },
+      { name: 'Cum', kwh: parseFloat((dailyBase * 1.20).toFixed(3)), cost: parseFloat((dailyBase * 1.20 * 0.15).toFixed(4)) },
+      { name: 'Cmt', kwh: parseFloat((dailyBase * 0.85).toFixed(3)), cost: parseFloat((dailyBase * 0.85 * 0.15).toFixed(4)) },
+      { name: 'Paz', kwh: parseFloat((dailyBase * 0.80).toFixed(3)), cost: parseFloat((dailyBase * 0.80 * 0.15).toFixed(4)) },
     ];
-  }, [activePodCount]);
+  }, [activePodCount, currentCpu]);
 
   const electricityMonthlyData = useMemo(() => {
-    const factor = 0.5 + (activePodCount / 8);
+    const nodeCount = Math.max(1, Math.ceil(activePodCount / 8));
+    const monthlyBase = 3.6 * nodeCount; 
+
     return [
-      { name: 'Oca', kwh: Math.round(1400 * factor), cost: Math.round(1400 * factor * 0.15) },
-      { name: 'Şub', kwh: Math.round(1350 * factor), cost: Math.round(1350 * factor * 0.15) },
-      { name: 'Mar', kwh: Math.round(1500 * factor), cost: Math.round(1500 * factor * 0.15) },
-      { name: 'Nis', kwh: Math.round(1420 * factor), cost: Math.round(1420 * factor * 0.15) },
-      { name: 'May', kwh: Math.round(1600 * factor), cost: Math.round(1600 * factor * 0.15) },
-      { name: 'Haz', kwh: Math.round(1680 * factor), cost: Math.round(1680 * factor * 0.15) },
+      { name: 'Oca', kwh: parseFloat((monthlyBase * 0.96).toFixed(2)), cost: parseFloat((monthlyBase * 0.96 * 0.15).toFixed(3)) },
+      { name: 'Şub', kwh: parseFloat((monthlyBase * 0.92).toFixed(2)), cost: parseFloat((monthlyBase * 0.92 * 0.15).toFixed(3)) },
+      { name: 'Mar', kwh: parseFloat((monthlyBase * 1.02).toFixed(2)), cost: parseFloat((monthlyBase * 1.02 * 0.15).toFixed(3)) },
+      { name: 'Nis', kwh: parseFloat((monthlyBase * 0.98).toFixed(2)), cost: parseFloat((monthlyBase * 0.98 * 0.15).toFixed(3)) },
+      { name: 'May', kwh: parseFloat((monthlyBase * 1.05).toFixed(2)), cost: parseFloat((monthlyBase * 1.05 * 0.15).toFixed(3)) },
+      { name: 'Haz', kwh: parseFloat((monthlyBase * 1.12).toFixed(2)), cost: parseFloat((monthlyBase * 1.12 * 0.15).toFixed(3)) },
     ];
   }, [activePodCount]);
 
   // 2. AI Token Usage (scales with error log events processed by Solver)
-  const tokenFactor = 1.0 + (activeEventCount * 0.05);
+  // For a single solver run, it uses ~10k-20k tokens. So we scale as Thousands/Millions.
+  const tokenFactor = 0.5 + (activeEventCount * 0.15); 
 
   const aiWeeklyData = useMemo(() => {
     return [
-      { name: 'OpenAI', value: Math.round(5.2 * tokenFactor * 10) / 10, cost: 5.2 * tokenFactor * 4.5, fill: aiConfig.openai.color },
-      { name: 'Gemini', value: Math.round(10.5 * tokenFactor * 10) / 10, cost: 10.5 * tokenFactor * 1.2, fill: aiConfig.gemini.color },
-      { name: 'Claude', value: Math.round(2.1 * tokenFactor * 10) / 10, cost: 2.1 * tokenFactor * 12.0, fill: aiConfig.claude.color },
-      { name: 'Groq', value: Math.round(15.8 * tokenFactor * 10) / 10, cost: 15.8 * tokenFactor * 0.3, fill: aiConfig.groq.color }
+      { name: 'OpenAI', value: parseFloat((0.085 * tokenFactor).toFixed(3)), cost: 0.085 * tokenFactor * 5.0, fill: aiConfig.openai.color },
+      { name: 'Gemini', value: parseFloat((0.240 * tokenFactor).toFixed(3)), cost: 0.240 * tokenFactor * 0.15, fill: aiConfig.gemini.color },
+      { name: 'Claude', value: parseFloat((0.035 * tokenFactor).toFixed(3)), cost: 0.035 * tokenFactor * 15.0, fill: aiConfig.claude.color },
+      { name: 'Groq', value: parseFloat((0.450 * tokenFactor).toFixed(3)), cost: 0.450 * tokenFactor * 0.10, fill: aiConfig.groq.color }
     ];
   }, [tokenFactor]);
 
   const aiMonthlyData = useMemo(() => {
     return [
-      { name: 'OpenAI', value: Math.round(22.4 * tokenFactor * 10) / 10, cost: 22.4 * tokenFactor * 4.5, fill: aiConfig.openai.color },
-      { name: 'Gemini', value: Math.round(41.0 * tokenFactor * 10) / 10, cost: 41.0 * tokenFactor * 1.2, fill: aiConfig.gemini.color },
-      { name: 'Claude', value: Math.round(9.5 * tokenFactor * 10) / 10, cost: 9.5 * tokenFactor * 12.0, fill: aiConfig.claude.color },
-      { name: 'Groq', value: Math.round(68.0 * tokenFactor * 10) / 10, cost: 68.0 * tokenFactor * 0.3, fill: aiConfig.groq.color }
+      { name: 'OpenAI', value: parseFloat((0.360 * tokenFactor).toFixed(3)), cost: 0.360 * tokenFactor * 5.0, fill: aiConfig.openai.color },
+      { name: 'Gemini', value: parseFloat((0.980 * tokenFactor).toFixed(3)), cost: 0.980 * tokenFactor * 0.15, fill: aiConfig.gemini.color },
+      { name: 'Claude', value: parseFloat((0.140 * tokenFactor).toFixed(3)), cost: 0.140 * tokenFactor * 15.0, fill: aiConfig.claude.color },
+      { name: 'Groq', value: parseFloat((1.850 * tokenFactor).toFixed(3)), cost: 1.850 * tokenFactor * 0.10, fill: aiConfig.groq.color }
     ];
   }, [tokenFactor]);
+
+  // Helper formatting function for tokens (displays K or M dynamically)
+  const formatTokens = (val) => {
+    if (val >= 1.0) {
+      return `${val.toFixed(2)}M`;
+    }
+    return `${(val * 1000).toFixed(0)}K`;
+  };
 
   // 3. AWS Cost Projection (What this K8s cluster would cost on AWS EKS)
   const awsWeeklyData = useMemo(() => {
     const nodeCount = Math.ceil(activePodCount / 4) || 1;
     return [
       { name: 'EC2 Node', cost: nodeCount * 32.50 },
-      { name: 'EKS Control', cost: 23.50 }, // Base EKS control plane weekly fraction
+      { name: 'EKS Control', cost: 23.50 }, 
       { name: 'RDS Instance', cost: activeServiceCount * 14.20 },
       { name: 'S3 Storage', cost: 8.50 },
       { name: 'Network I/O', cost: activePodCount * 3.40 },
@@ -384,7 +421,7 @@ export default function Stats() {
 
   return (
     <div className="p-8 h-full overflow-y-auto bg-slate-950 text-slate-100 pb-24 relative">
-      {/* Header section (Professional, clean language) */}
+      {/* Header section */}
       <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-900/75 pb-6">
         <div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent flex items-center gap-3">
@@ -682,7 +719,7 @@ export default function Stats() {
               <TrendingUp className="h-4 w-4 text-emerald-400" /> Aktif Küme Pod Sayısı: {activePodCount} (Tüketim ağırlığı dinamiktir)
             </div>
             <div className="text-slate-500">
-              Tahmini Maliyet: <span className="text-emerald-400 font-bold font-mono">${getSum(elecTimeRange === 'monthly' ? electricityMonthlyData : electricityWeeklyData, 'cost').toFixed(2)}</span>
+              Tahmini Maliyet: <span className="text-emerald-400 font-bold font-mono">${getSum(elecTimeRange === 'monthly' ? electricityMonthlyData : electricityWeeklyData, 'cost').toFixed(3)}</span>
             </div>
           </CardFooter>
         </Card>
@@ -744,8 +781,8 @@ export default function Stats() {
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Toplam</span>
-                <span className="text-base font-mono font-bold text-slate-200">
-                  {getSum(aiTimeRange === 'monthly' ? aiMonthlyData : aiWeeklyData, 'value').toFixed(1)}M
+                <span className="text-sm font-mono font-bold text-slate-200">
+                  {formatTokens(getSum(aiTimeRange === 'monthly' ? aiMonthlyData : aiWeeklyData, 'value'))}
                 </span>
               </div>
             </div>
@@ -759,7 +796,7 @@ export default function Stats() {
                     <span className="text-xs font-semibold text-slate-300">{prov.name}</span>
                   </div>
                   <div className="text-right">
-                    <span className="text-xs font-mono font-bold block text-slate-200">{prov.value}M Token</span>
+                    <span className="text-xs font-mono font-bold block text-slate-200">{formatTokens(prov.value)} Token</span>
                     <span className="text-[9px] font-mono text-slate-500">Maliyet: <span className="text-emerald-500 font-bold">${prov.cost.toFixed(2)}</span></span>
                   </div>
                 </div>
@@ -774,140 +811,144 @@ export default function Stats() {
         </Card>
 
         {/* ========================================================
-            CARD 6: AWS PROJECTION COST (WITH INDEPENDENT TOGGLE)
+            CARD 6: AWS PROJECTION COST (ONLY RENDER IF DETECTED)
            ======================================================== */}
-        <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <DollarSign size={20} className="text-indigo-400" />
-                  AWS EKS Projeksiyon Giderleri
-                </CardTitle>
-                <CardDescription>
-                  Mevcut yerel k3s küme yüklerinizin AWS altyapısındaki tahmini karşılığı ($)
-                </CardDescription>
-              </div>
+        {hasAws && (
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign size={20} className="text-indigo-400" />
+                    AWS EKS Projeksiyon Giderleri
+                  </CardTitle>
+                  <CardDescription>
+                    Mevcut yerel k3s küme yüklerinizin AWS altyapısındaki tahmini karşılığı ($)
+                  </CardDescription>
+                </div>
 
-              {/* Local Selector */}
-              <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
-                <button 
-                  onClick={() => setAwsTimeRange('weekly')} 
-                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${awsTimeRange === 'weekly' ? 'bg-indigo-50/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400'}`}
-                >
-                  Haftalık
-                </button>
-                <button 
-                  onClick={() => setAwsTimeRange('monthly')} 
-                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${awsTimeRange === 'monthly' ? 'bg-indigo-50/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400'}`}
-                >
-                  Aylık
-                </button>
+                {/* Local Selector */}
+                <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
+                  <button 
+                    onClick={() => setAwsTimeRange('weekly')} 
+                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${awsTimeRange === 'weekly' ? 'bg-indigo-50/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400'}`}
+                  >
+                    Haftalık
+                  </button>
+                  <button 
+                    onClick={() => setAwsTimeRange('monthly')} 
+                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${awsTimeRange === 'monthly' ? 'bg-indigo-50/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400'}`}
+                  >
+                    Aylık
+                  </button>
+                </div>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={awsConfig} className="h-56">
-              <BarChart
-                accessibilityLayer
-                data={awsTimeRange === 'monthly' ? awsMonthlyData : awsWeeklyData}
-                margin={{ top: 20 }}
-              >
-                <CartesianGrid vertical={false} stroke="#1e293b" />
-                <XAxis
-                  dataKey="name"
-                  tickLine={false}
-                  tickMargin={10}
-                  axisLine={false}
-                />
-                <ChartTooltip
-                  cursor={false}
-                  content={<ChartTooltipContent />}
-                />
-                <Bar dataKey="cost" fill="var(--color-cost)" radius={6}>
-                  <LabelList
-                    position="top"
-                    offset={10}
-                    className="fill-slate-300 font-mono"
-                    fontSize={10}
-                    formatter={(v) => `$${v.toFixed(0)}`}
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={awsConfig} className="h-56">
+                <BarChart
+                  accessibilityLayer
+                  data={awsTimeRange === 'monthly' ? awsMonthlyData : awsWeeklyData}
+                  margin={{ top: 20 }}
+                >
+                  <CartesianGrid vertical={false} stroke="#1e293b" />
+                  <XAxis
+                    dataKey="name"
+                    tickLine={false}
+                    tickMargin={10}
+                    axisLine={false}
                   />
-                </Bar>
-              </BarChart>
-            </ChartContainer>
-          </CardContent>
-          <CardFooter className="justify-between text-xs text-slate-400">
-            <span>Projeksiyon Pod / Servis: <b>{activePodCount} / {activeServiceCount}</b></span>
-            <span className="font-semibold text-slate-200">Toplam Bulut Eşdeğeri: <span className="text-emerald-400 font-bold font-mono">${getSum(awsTimeRange === 'monthly' ? awsMonthlyData : awsWeeklyData, 'cost').toFixed(2)}</span></span>
-          </CardFooter>
-        </Card>
+                  <ChartTooltip
+                    cursor={false}
+                    content={<ChartTooltipContent />}
+                  />
+                  <Bar dataKey="cost" fill="var(--color-cost)" radius={6}>
+                    <LabelList
+                      position="top"
+                      offset={10}
+                      className="fill-slate-300 font-mono"
+                      fontSize={10}
+                      formatter={(v) => `$${v.toFixed(0)}`}
+                    />
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
+            </CardContent>
+            <CardFooter className="justify-between text-xs text-slate-400">
+              <span>Projeksiyon Pod / Servis: <b>{activePodCount} / {activeServiceCount}</b></span>
+              <span className="font-semibold text-slate-200">Toplam Bulut Eşdeğeri: <span className="text-emerald-400 font-bold font-mono">${getSum(awsTimeRange === 'monthly' ? awsMonthlyData : awsWeeklyData, 'cost').toFixed(2)}</span></span>
+            </CardFooter>
+          </Card>
+        )}
 
         {/* ========================================================
-            CARD 7: TERRAFORM WORKSPACE ESTIMATES (WITH INDEPENDENT TOGGLE)
+            CARD 7: TERRAFORM WORKSPACE ESTIMATES (ONLY RENDER IF DETECTED)
            ======================================================== */}
-        <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Layers size={20} className="text-fuchsia-400" />
-                  Terraform Workspace Dağılımı
-                </CardTitle>
-                <CardDescription>
-                  Namespace dağılımlarına göre ayrıştırılmış bütçe projeksiyonu ($)
-                </CardDescription>
-              </div>
+        {hasTerraform && (
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Layers size={20} className="text-fuchsia-400" />
+                    Terraform Workspace Dağılımı
+                  </CardTitle>
+                  <CardDescription>
+                    Namespace dağılımlarına göre ayrıştırılmış bütçe projeksiyonu ($)
+                  </CardDescription>
+                </div>
 
-              {/* Local Selector */}
-              <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
-                <button 
-                  onClick={() => setTfTimeRange('weekly')} 
-                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${tfTimeRange === 'weekly' ? 'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20' : 'text-slate-400'}`}
-                >
-                  Haftalık
-                </button>
-                <button 
-                  onClick={() => setTfTimeRange('monthly')} 
-                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${tfTimeRange === 'monthly' ? 'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20' : 'text-slate-400'}`}
-                >
-                  Aylık
-                </button>
+                {/* Local Selector */}
+                <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
+                  <button 
+                    onClick={() => setTfTimeRange('weekly')} 
+                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${tfTimeRange === 'weekly' ? 'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20' : 'text-slate-400'}`}
+                  >
+                    Haftalık
+                  </button>
+                  <button 
+                    onClick={() => setTfTimeRange('monthly')} 
+                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${tfTimeRange === 'monthly' ? 'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20' : 'text-slate-400'}`}
+                  >
+                    Aylık
+                  </button>
+                </div>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pb-0">
-            <ChartContainer
-              config={tfConfig}
-              className="mx-auto aspect-square max-h-[220px]"
-            >
-              <RadarChart data={tfTimeRange === 'monthly' ? tfMonthlyData : tfWeeklyData}>
-                <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-                <PolarAngleAxis dataKey="workspace" tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                <PolarGrid stroke="#334155" />
-                <Radar
-                  name="Planlanan Altyapı Bütçesi"
-                  dataKey="cost"
-                  fill="var(--color-cost)"
-                  fillOpacity={0.35}
-                  stroke="var(--color-cost)"
-                  strokeWidth={2}
-                  dot={{
-                    r: 4,
-                    fillOpacity: 1,
-                  }}
-                />
-              </RadarChart>
-            </ChartContainer>
-          </CardContent>
-          <CardFooter className="flex-col gap-2 text-xs text-slate-400">
-            <div className="flex items-center gap-2 leading-none font-medium text-slate-200">
-              <TrendingUp className="h-4 w-4 text-emerald-400" /> Kümedeki aktif namespace'ler baz alınmıştır.
-            </div>
-            <div className="text-slate-500 font-mono text-[10px] text-center w-full">
-              Dev: ${getSum(tfTimeRange === 'monthly' ? tfMonthlyData : tfWeeklyData, 'cost') > 0 ? (tfTimeRange === 'monthly' ? tfMonthlyData[0].cost : tfWeeklyData[0].cost) : 0} | Staging: ${getSum(tfTimeRange === 'monthly' ? tfMonthlyData : tfWeeklyData, 'cost') > 0 ? (tfTimeRange === 'monthly' ? tfMonthlyData[1].cost : tfWeeklyData[1].cost) : 0} | Prod: ${getSum(tfTimeRange === 'monthly' ? tfMonthlyData : tfWeeklyData, 'cost') > 0 ? (tfTimeRange === 'monthly' ? tfMonthlyData[2].cost : tfWeeklyData[2].cost) : 0}
-            </div>
-          </CardFooter>
-        </Card>
+            </CardHeader>
+            <CardContent className="pb-0">
+              <ChartContainer
+                config={tfConfig}
+                className="mx-auto aspect-square max-h-[220px]"
+              >
+                <RadarChart data={tfTimeRange === 'monthly' ? tfMonthlyData : tfWeeklyData}>
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                  <PolarAngleAxis dataKey="workspace" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                  <PolarGrid stroke="#334155" />
+                  <Radar
+                    name="Planlanan Altyapı Bütçesi"
+                    dataKey="cost"
+                    fill="var(--color-cost)"
+                    fillOpacity={0.35}
+                    stroke="var(--color-cost)"
+                    strokeWidth={2}
+                    dot={{
+                      r: 4,
+                      fillOpacity: 1,
+                    }}
+                  />
+                </RadarChart>
+              </ChartContainer>
+            </CardContent>
+            <CardFooter className="flex-col gap-2 text-xs text-slate-400">
+              <div className="flex items-center gap-2 leading-none font-medium text-slate-200">
+                <TrendingUp className="h-4 w-4 text-emerald-400" /> Kümedeki aktif namespace'ler baz alınmıştır.
+              </div>
+              <div className="text-slate-500 font-mono text-[10px] text-center w-full">
+                Dev: ${getSum(tfTimeRange === 'monthly' ? tfMonthlyData : tfWeeklyData, 'cost') > 0 ? (tfTimeRange === 'monthly' ? tfMonthlyData[0].cost : tfWeeklyData[0].cost) : 0} | Staging: ${getSum(tfTimeRange === 'monthly' ? tfMonthlyData : tfWeeklyData, 'cost') > 0 ? (tfTimeRange === 'monthly' ? tfMonthlyData[1].cost : tfWeeklyData[1].cost) : 0} | Prod: ${getSum(tfTimeRange === 'monthly' ? tfMonthlyData : tfWeeklyData, 'cost') > 0 ? (tfTimeRange === 'monthly' ? tfMonthlyData[2].cost : tfWeeklyData[2].cost) : 0}
+              </div>
+            </CardFooter>
+          </Card>
+        )}
 
       </div>
     </div>
