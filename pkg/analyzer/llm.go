@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -321,7 +322,12 @@ func trackTokens(provider string, prompt string, completion string) {
 	tokenFileLock.Lock()
 	defer tokenFileLock.Unlock()
 
-	filePath := "/home/thebanri/Projects/BanriFlow/token_usage.json"
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Printf("⚠️  Cannot get home dir for token tracking: %v\n", err)
+		return
+	}
+	filePath := filepath.Join(homeDir, ".banriflow_tokens.json")
 	promptTokens := len(prompt) / 4
 	completionTokens := len(completion) / 4
 	totalTokens := promptTokens + completionTokens

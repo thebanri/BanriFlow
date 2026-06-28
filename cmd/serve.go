@@ -239,7 +239,8 @@ var serveCmd = &cobra.Command{
 				"claude": 0,
 				"groq":   0,
 			}
-			if fileBytes, err := os.ReadFile("/home/thebanri/Projects/BanriFlow/token_usage.json"); err == nil {
+			homeDir, _ := os.UserHomeDir()
+			if fileBytes, err := os.ReadFile(filepath.Join(homeDir, ".banriflow_tokens.json")); err == nil {
 				var temp map[string]int
 				if errJson := json.Unmarshal(fileBytes, &temp); errJson == nil {
 					for k, v := range temp {
