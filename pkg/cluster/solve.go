@@ -34,8 +34,9 @@ func AutoFixStream(ctx context.Context, provider, namespace, pod, errMsg, userIn
 		return
 	}
 
-	maxRetries := 3
+	maxRetries := 5
 	previousAttempts := ""
+	lastReason := ""
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		// En güncel pod'u bul
@@ -184,6 +185,26 @@ Background Analysis: %s`, namespace, actualPod, prefix, errMsg)
 					sendMsg("[SOLVED]")
 					break
 				} else if strings.Contains(status, "CrashLoopBackOff") || strings.Contains(status, "ImagePullBackOff") || strings.Contains(status, "ErrImagePull") || strings.Contains(status, "RunContainerError") || strings.Contains(status, "ContainerCreating") || strings.Contains(status, "CreateContainerConfigError") || strings.Contains(status, "Pending") {
+					
+					var currentReason string
+					if strings.Contains(status, "ErrImagePull") || strings.Contains(status, "ImagePullBackOff") {
+						currentReason = "image-pull"
+					} else if strings.Contains(status, "CrashLoopBackOff") || strings.Contains(status, "RunContainerError") {
+						currentReason = "crash-loop"
+					} else if strings.Contains(status, "CreateContainerConfigError") {
+						currentReason = "config-error"
+					} else if strings.Contains(status, "ContainerCreating") || strings.Contains(status, "Pending") {
+						currentReason = "pending"
+					} else {
+						currentReason = "other"
+					}
+
+					if lastReason != "" && lastReason != currentReason {
+						sendMsg(fmt.Sprintf("📈 İlerleme Tespit Edildi: Hata durumu '%s' -> '%s' olarak değişti. Yapay zeka ek deneme hakkı kazandı!", lastReason, currentReason))
+						attempt = 1
+					}
+					lastReason = currentReason
+
 					if attempt < maxRetries {
 						sendMsg("⚠️ KISMİ BAŞARI: Komut çalıştı ancak yeni Pod hala hatalı veya askıda (Pending). Durum: " + status)
 						previousAttempts += fmt.Sprintf("- Attempt %d: %s (Result: %s)\n", attempt, cmdStr, status)
@@ -192,6 +213,13 @@ Background Analysis: %s`, namespace, actualPod, prefix, errMsg)
 					}
 				} else if strings.Contains(status, "Running") || strings.Contains(status, "Succeeded") {
 					if strings.Contains(status, "Ready:false") {
+						currentReason := "not-ready"
+						if lastReason != "" && lastReason != currentReason {
+							sendMsg(fmt.Sprintf("📈 İlerleme Tespit Edildi: Hata durumu '%s' -> '%s' olarak değişti. Yapay zeka ek deneme hakkı kazandı!", lastReason, currentReason))
+							attempt = 1
+						}
+						lastReason = currentReason
+
 						if attempt < maxRetries {
 							sendMsg("⚠️ KISMİ BAŞARI: Pod çalışıyor (Running) ancak henüz Hazır (Ready) değil. Readiness Probe hatası olabilir. Durum: " + status)
 							previousAttempts += fmt.Sprintf("- Attempt %d: %s (Result: %s - Pod is Running but Not Ready)\n", attempt, cmdStr, status)
