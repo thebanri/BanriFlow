@@ -306,21 +306,29 @@ export default function Stats() {
 
   const aiWeeklyData = useMemo(() => {
     return liveMetrics?.aiWeekly || [
-      { name: 'OpenAI', value: 0.085, cost: 0.425, fill: aiConfig.openai.color },
-      { name: 'Gemini', value: 0.240, cost: 0.036, fill: aiConfig.gemini.color },
-      { name: 'Claude', value: 0.035, cost: 0.525, fill: aiConfig.claude.color },
-      { name: 'Groq', value: 0.450, cost: 0.045, fill: aiConfig.groq.color }
+      { name: 'OpenAI', value: 0, cost: 0, fill: aiConfig.openai.color },
+      { name: 'Gemini', value: 0, cost: 0, fill: aiConfig.gemini.color },
+      { name: 'Claude', value: 0, cost: 0, fill: aiConfig.claude.color },
+      { name: 'Groq', value: 0, cost: 0, fill: aiConfig.groq.color }
     ];
   }, [liveMetrics]);
 
   const aiMonthlyData = useMemo(() => {
     return liveMetrics?.aiMonthly || [
-      { name: 'OpenAI', value: 0.360, cost: 1.80, fill: aiConfig.openai.color },
-      { name: 'Gemini', value: 0.980, cost: 0.147, fill: aiConfig.gemini.color },
-      { name: 'Claude', value: 0.140, cost: 2.10, fill: aiConfig.claude.color },
-      { name: 'Groq', value: 1.850, cost: 0.185, fill: aiConfig.groq.color }
+      { name: 'OpenAI', value: 0, cost: 0, fill: aiConfig.openai.color },
+      { name: 'Gemini', value: 0, cost: 0, fill: aiConfig.gemini.color },
+      { name: 'Claude', value: 0, cost: 0, fill: aiConfig.claude.color },
+      { name: 'Groq', value: 0, cost: 0, fill: aiConfig.groq.color }
     ];
   }, [liveMetrics]);
+
+  const activeAiWeeklyData = useMemo(() => {
+    return aiWeeklyData.filter(d => d.value > 0);
+  }, [aiWeeklyData]);
+
+  const activeAiMonthlyData = useMemo(() => {
+    return aiMonthlyData.filter(d => d.value > 0);
+  }, [aiMonthlyData]);
 
   const awsWeeklyData = useMemo(() => {
     return liveMetrics?.awsWeekly || [
@@ -718,7 +726,7 @@ export default function Stats() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={aiTimeRange === 'monthly' ? aiMonthlyData : aiWeeklyData}
+                    data={aiTimeRange === 'monthly' ? activeAiMonthlyData : activeAiWeeklyData}
                     cx="50%"
                     cy="50%"
                     innerRadius={55}
@@ -726,7 +734,7 @@ export default function Stats() {
                     paddingAngle={4}
                     dataKey="value"
                   >
-                    {(aiTimeRange === 'monthly' ? aiMonthlyData : aiWeeklyData).map((entry, index) => (
+                    {(aiTimeRange === 'monthly' ? activeAiMonthlyData : activeAiWeeklyData).map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.fill} />
                     ))}
                   </Pie>
@@ -736,14 +744,14 @@ export default function Stats() {
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Toplam</span>
                 <span className="text-sm font-mono font-bold text-slate-200">
-                  {formatTokens(getSum(aiTimeRange === 'monthly' ? aiMonthlyData : aiWeeklyData, 'value'))}
+                  {formatTokens(getSum(aiTimeRange === 'monthly' ? activeAiMonthlyData : activeAiWeeklyData, 'value'))}
                 </span>
               </div>
             </div>
 
             {/* Detail stats legend table */}
             <div className="flex-1 flex flex-col gap-2.5 w-full">
-              {(aiTimeRange === 'monthly' ? aiMonthlyData : aiWeeklyData).map((prov, i) => (
+              {(aiTimeRange === 'monthly' ? activeAiMonthlyData : activeAiWeeklyData).map((prov, i) => (
                 <div key={i} className="p-3 bg-slate-950/70 border border-slate-900/60 rounded-xl flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: prov.fill }}></div>
@@ -760,7 +768,7 @@ export default function Stats() {
           </CardContent>
           <CardFooter className="text-xs text-slate-400 justify-between">
             <span>Çözülen Olay Kaydı Sayısı: <b>{activeEventCount}</b></span>
-            <span className="text-emerald-500 font-bold font-mono">Toplam Yapay Zeka Gideri: ${getSum(aiTimeRange === 'monthly' ? aiMonthlyData : aiWeeklyData, 'cost').toFixed(2)}</span>
+            <span className="text-emerald-500 font-bold font-mono">Toplam Yapay Zeka Gideri: ${getSum(aiTimeRange === 'monthly' ? activeAiMonthlyData : activeAiWeeklyData, 'cost').toFixed(2)}</span>
           </CardFooter>
         </Card>
 

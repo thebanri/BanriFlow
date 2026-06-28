@@ -234,18 +234,16 @@ var serveCmd = &cobra.Command{
 
 			// 2. AI Tokens loaded dynamically from token_usage.json
 			tokenData := map[string]int{
-				"openai": 85000,
-				"gemini": 240000,
-				"claude": 35000,
-				"groq":   450000,
+				"openai": 0,
+				"gemini": 0,
+				"claude": 0,
+				"groq":   0,
 			}
 			if fileBytes, err := os.ReadFile("token_usage.json"); err == nil {
 				var temp map[string]int
 				if json.Unmarshal(fileBytes, &temp) == nil {
 					for k, v := range temp {
-						if v > 0 {
-							tokenData[k] = v
-						}
+						tokenData[k] = v
 					}
 				}
 			}
