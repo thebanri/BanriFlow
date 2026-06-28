@@ -767,7 +767,7 @@ export default function Stats() {
 
           </CardContent>
           <CardFooter className="text-xs text-slate-400 justify-between">
-            <span>Çözülen Olay Kaydı Sayısı: <b>{activeEventCount}</b></span>
+            <span>Sistem Olay Kaydı (7 Günlük): <b>{activeEventCount}</b></span>
             <span className="text-emerald-500 font-bold font-mono">Toplam Yapay Zeka Gideri: ${getSum(aiTimeRange === 'monthly' ? activeAiMonthlyData : activeAiWeeklyData, 'cost').toFixed(2)}</span>
           </CardFooter>
         </Card>
