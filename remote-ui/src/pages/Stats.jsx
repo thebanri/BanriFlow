@@ -8,7 +8,7 @@ import {
 import {
   Area, AreaChart, CartesianGrid, XAxis, YAxis, Bar, BarChart, 
   LabelList, PolarAngleAxis, PolarGrid, Radar, RadarChart, 
-  PieChart, Pie, Cell, ResponsiveContainer, RadialBar, RadialBarChart
+  PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, RadialBar, RadialBarChart
 } from 'recharts';
 
 import {
@@ -250,9 +250,18 @@ export default function Stats() {
     }
   };
 
-  // --- Fetch Chart Data directly from liveMetrics (provided by server) or fallback locally ---
   const electricityWeeklyData = useMemo(() => {
-    return liveMetrics?.electricityWeekly || [];
+    const raw = liveMetrics?.electricityWeekly || [];
+    return raw.map((item, index) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - index));
+      const dayStr = String(date.getDate()).padStart(2, '0');
+      const monthStr = String(date.getMonth() + 1).padStart(2, '0');
+      return {
+        ...item,
+        name: `${dayStr}.${monthStr}`
+      };
+    });
   }, [liveMetrics]);
 
   const electricityMonthlyData = useMemo(() => {
@@ -276,6 +285,16 @@ export default function Stats() {
     const filtered = aiData.filter(d => d.value > 0);
     return filtered.length > 0 ? filtered : aiData;
   }, [aiData]);
+
+  const pieData = useMemo(() => {
+    return activeAiData.map(d => ({
+      label: d.name,
+      value: d.value,
+      color: d.fill,
+      fill: d.fill,
+      cost: d.cost
+    }));
+  }, [activeAiData]);
 
   const awsWeeklyData = useMemo(() => {
     return liveMetrics?.awsWeekly || [];
@@ -703,36 +722,20 @@ export default function Stats() {
           </CardHeader>
           <CardContent className="flex flex-col sm:flex-row justify-around items-center gap-6 pb-2">
             
-            {/* Radial Bar Chart */}
+            {/* Custom Pie Chart */}
             {hasError ? (
               <div className="h-48 flex items-center justify-center text-rose-400 font-medium w-full">
                 Veri çekilemedi
               </div>
             ) : (
               <>
-                <div className="h-48 w-48 relative flex justify-center items-center">
-                  <ChartContainer
-                    config={aiConfig}
-                    className="mx-auto aspect-square w-full h-full"
-                  >
-                    <RadialBarChart 
-                      data={activeAiData} 
-                      innerRadius={30} 
-                      outerRadius={90}
-                    >
-                      <ChartTooltip
-                        cursor={false}
-                        content={<ChartTooltipContent hideLabel nameKey="name" />}
-                      />
-                      <RadialBar dataKey="value" background />
-                    </RadialBarChart>
-                  </ChartContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-[9px] text-slate-500 uppercase tracking-widest font-semibold">Toplam</span>
-                    <span className="text-xs font-mono font-bold text-slate-200">
-                      {formatTokens(getSum(activeAiData, 'value'))}
-                    </span>
-                  </div>
+                <div className="h-[200px] w-[200px] relative flex justify-center items-center">
+                  <PieChart data={pieData} innerRadius={60} size={200}>
+                    {pieData.map((item, index) => (
+                      <PieSlice index={index} key={item.label} />
+                    ))}
+                    <PieCenter defaultLabel="Total" />
+                  </PieChart>
                 </div>
 
                 {/* Detail stats legend table */}
@@ -925,6 +928,67 @@ export default function Stats() {
         )}
 
       </div>
+    </div>
+  );
+}
+
+// --- Custom clean PieChart subcomponents mapped to Recharts under the hood ---
+const PieContext = React.createContext(null);
+
+function PieChart({ data, innerRadius, size, children }) {
+  const totalValue = data.reduce((acc, curr) => acc + (curr.value || 0), 0);
+
+  return (
+    <PieContext.Provider value={{ data, totalValue, size }}>
+      <div className="relative flex justify-center items-center" style={{ width: size, height: size }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <RechartsPieChart>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              innerRadius={innerRadius}
+              outerRadius={size / 2 - 10}
+              paddingAngle={4}
+              dataKey="value"
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.fill || entry.color || '#ffffff'} />
+              ))}
+            </Pie>
+            <ChartTooltip content={<ChartTooltipContent nameKey="label" />} />
+          </RechartsPieChart>
+        </ResponsiveContainer>
+        {children}
+      </div>
+    </PieContext.Provider>
+  );
+}
+
+function PieSlice({ index }) {
+  return null;
+}
+
+function PieCenter({ defaultLabel }) {
+  const context = React.useContext(PieContext);
+  if (!context) return null;
+
+  const formatTokens = (val) => {
+    if (val >= 1000000) {
+      return `${(val / 1000000).toFixed(2)}M`;
+    }
+    if (val >= 1000) {
+      return `${(val / 1000).toFixed(1)}K`;
+    }
+    return `${val}`;
+  };
+
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+      <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">{defaultLabel}</span>
+      <span className="text-sm font-mono font-bold text-slate-200">
+        {formatTokens(context.totalValue)}
+      </span>
     </div>
   );
 }
