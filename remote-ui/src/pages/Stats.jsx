@@ -53,6 +53,7 @@ export default function Stats() {
   const [cpuHistory, setCpuHistory] = useState(() => generateInitialHistory(15));
   const [ramHistory, setRamHistory] = useState(() => generateInitialHistory(15));
   const [networkHistory, setNetworkHistory] = useState(() => generateInitialNetworkHistory(15));
+  const [hasError, setHasError] = useState(false);
   
   // Current values derived from state
   const currentCpu = cpuHistory[cpuHistory.length - 1]?.value || 0;
@@ -102,10 +103,12 @@ export default function Stats() {
         .then(res => {
           if (res.data) {
             setLiveMetrics(res.data);
+            setHasError(false);
           }
         })
         .catch(err => {
           setLiveMetrics(null); 
+          setHasError(true);
         });
     };
 
@@ -127,12 +130,21 @@ export default function Stats() {
 
       if (currentLive) {
         // USE REAL LIVE DATA from Raspberry Pi / Host Machine
-        setCpuHistory(prev => [...prev.slice(1), { time: timeNow, value: Math.round(currentLive.cpuPercent) }]);
-        setRamHistory(prev => [...prev.slice(1), { time: timeNow, value: Math.round(currentLive.memPercent) }]);
+        setCpuHistory(prev => {
+          const base = prev.length === 0 ? generateInitialHistory(15) : prev;
+          return [...base.slice(1), { time: timeNow, value: Math.round(currentLive.cpuPercent) }];
+        });
+        setRamHistory(prev => {
+          const base = prev.length === 0 ? generateInitialHistory(15) : prev;
+          return [...base.slice(1), { time: timeNow, value: Math.round(currentLive.memPercent) }];
+        });
         
         const rxMbps = Math.round(currentLive.netRxMBps * 8 * 10) / 10;
         const txMbps = Math.round(currentLive.netTxMBps * 8 * 10) / 10;
-        setNetworkHistory(prev => [...prev.slice(1), { time: timeNow, rx: rxMbps, tx: txMbps }]);
+        setNetworkHistory(prev => {
+          const base = prev.length === 0 ? generateInitialNetworkHistory(15) : prev;
+          return [...base.slice(1), { time: timeNow, rx: rxMbps, tx: txMbps }];
+        });
 
         if (rxMbps + txMbps > 120) {
           setBottleneckLogs(old => {
@@ -149,59 +161,16 @@ export default function Stats() {
           });
         }
       } else {
-        // FALLBACK TO SIMULATOR (If Go Server / API is offline during local dev)
-        const hasErrorPod = clusterTopology.pods.some(p => p.status === 'error');
-        const podCount = clusterTopology.pods.length || 5;
-
-        setCpuHistory(prev => {
-          const lastVal = prev[prev.length - 1]?.value || 30;
-          const baseline = Math.min(20 + podCount * 4 + (hasErrorPod ? 25 : 0), 90);
-          const drift = Math.floor(Math.random() * 11) - 5; 
-          let newVal = Math.min(Math.max(baseline + drift, 10), 98);
-          return [...prev.slice(1), { time: timeNow, value: newVal }];
-        });
-
-        setRamHistory(prev => {
-          const lastVal = prev[prev.length - 1]?.value || 55;
-          const baseline = Math.min(35 + podCount * 4, 85);
-          const drift = Math.floor(Math.random() * 5) - 2;
-          let newVal = Math.min(Math.max(baseline + drift, 30), 95);
-          return [...prev.slice(1), { time: timeNow, value: newVal }];
-        });
-
-        setNetworkHistory(prev => {
-          const lastRx = prev[prev.length - 1]?.rx || 30;
-          const lastTx = prev[prev.length - 1]?.tx || 25;
-          
-          const isBurst = Math.random() > 0.90;
-          const rxDrift = isBurst ? Math.floor(Math.random() * 40) + 30 : Math.floor(Math.random() * 10) - 5;
-          const txDrift = isBurst ? Math.floor(Math.random() * 30) + 20 : Math.floor(Math.random() * 8) - 4;
-
-          let newRx = Math.min(Math.max(lastRx + rxDrift, 15), 140);
-          let newTx = Math.min(Math.max(lastTx + txDrift, 10), 100);
-
-          if (newRx + newTx > 130) {
-            setBottleneckLogs(old => {
-              const exists = old.some(log => log.time === timeNow);
-              if (exists) return old;
-              const newLog = {
-                id: Date.now(),
-                time: timeNow,
-                type: 'Ağ Tıkanıklığı (Simüle)',
-                desc: `Trafik ${newRx + newTx} Mbps seviyesine ulaştı (Rx: ${newRx} / Tx: ${newTx})`,
-                severity: 'warning'
-              };
-              return [newLog, ...old.slice(0, 4)];
-            });
-          }
-
-          return [...prev.slice(1), { time: timeNow, rx: newRx, tx: newTx }];
-        });
+        if (hasError) {
+          setCpuHistory([]);
+          setRamHistory([]);
+          setNetworkHistory([]);
+        }
       }
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [clusterTopology.pods]);
+  }, [clusterTopology.pods, hasError]);
 
   // --- Dynamic presence detection for AWS & Terraform ---
   const hasAws = useMemo(() => {
@@ -282,35 +251,15 @@ export default function Stats() {
 
   // --- Fetch Chart Data directly from liveMetrics (provided by server) or fallback locally ---
   const electricityWeeklyData = useMemo(() => {
-    return liveMetrics?.electricityWeekly || [
-      { name: 'Pzt', kwh: 0.12, cost: 0.018 },
-      { name: 'Sal', kwh: 0.13, cost: 0.0195 },
-      { name: 'Çar', kwh: 0.14, cost: 0.021 },
-      { name: 'Per', kwh: 0.12, cost: 0.018 },
-      { name: 'Cum', kwh: 0.15, cost: 0.0225 },
-      { name: 'Cmt', kwh: 0.11, cost: 0.0165 },
-      { name: 'Paz', kwh: 0.10, cost: 0.015 },
-    ];
+    return liveMetrics?.electricityWeekly || [];
   }, [liveMetrics]);
 
   const electricityMonthlyData = useMemo(() => {
-    return liveMetrics?.electricityMonthly || [
-      { name: 'Oca', kwh: 3.6, cost: 0.54 },
-      { name: 'Şub', kwh: 3.4, cost: 0.51 },
-      { name: 'Mar', kwh: 3.8, cost: 0.57 },
-      { name: 'Nis', kwh: 3.7, cost: 0.555 },
-      { name: 'May', kwh: 3.9, cost: 0.585 },
-      { name: 'Haz', kwh: 4.1, cost: 0.615 },
-    ];
+    return liveMetrics?.electricityMonthly || [];
   }, [liveMetrics]);
 
   const aiData = useMemo(() => {
-    return liveMetrics?.aiWeekly || [
-      { name: 'OpenAI', value: 0, cost: 0, fill: aiConfig.openai.color },
-      { name: 'Gemini', value: 0, cost: 0, fill: aiConfig.gemini.color },
-      { name: 'Claude', value: 0, cost: 0, fill: aiConfig.claude.color },
-      { name: 'Groq', value: 0, cost: 0, fill: aiConfig.groq.color }
-    ];
+    return liveMetrics?.aiWeekly || [];
   }, [liveMetrics]);
 
   const activeAiData = useMemo(() => {
@@ -319,39 +268,19 @@ export default function Stats() {
   }, [aiData]);
 
   const awsWeeklyData = useMemo(() => {
-    return liveMetrics?.awsWeekly || [
-      { name: 'EC2 Node', cost: 32.50 },
-      { name: 'EKS Control', cost: 23.50 },
-      { name: 'RDS Instance', cost: 14.20 },
-      { name: 'S3 Storage', cost: 8.50 },
-      { name: 'Network I/O', cost: 3.40 },
-    ];
+    return liveMetrics?.awsWeekly || [];
   }, [liveMetrics]);
 
   const awsMonthlyData = useMemo(() => {
-    return liveMetrics?.awsMonthly || [
-      { name: 'EC2 Node', cost: 130.00 },
-      { name: 'EKS Control', cost: 74.00 },
-      { name: 'RDS Instance', cost: 56.80 },
-      { name: 'S3 Storage', cost: 34.00 },
-      { name: 'Network I/O', cost: 13.60 },
-    ];
+    return liveMetrics?.awsMonthly || [];
   }, [liveMetrics]);
 
   const tfWeeklyData = useMemo(() => {
-    return liveMetrics?.tfWeekly || [
-      { workspace: 'Geliştirme (Dev)', cost: 20 },
-      { workspace: 'Sahneleme (Staging)', cost: 30 },
-      { workspace: 'Sistem (Prod)', cost: 50 }
-    ];
+    return liveMetrics?.tfWeekly || [];
   }, [liveMetrics]);
 
   const tfMonthlyData = useMemo(() => {
-    return liveMetrics?.tfMonthly || [
-      { workspace: 'Geliştirme (Dev)', cost: 80 },
-      { workspace: 'Sahneleme (Staging)', cost: 120 },
-      { workspace: 'Sistem (Prod)', cost: 200 }
-    ];
+    return liveMetrics?.tfMonthly || [];
   }, [liveMetrics]);
 
   // Helper formatting function for tokens (displays K or M dynamically)
@@ -365,9 +294,9 @@ export default function Stats() {
     return `${val}`;
   };
 
-  const activePodCount = liveMetrics?.podCount || clusterTopology.pods.length || 4;
-  const activeServiceCount = liveMetrics?.svcCount || clusterTopology.services.length || 3;
-  const activeEventCount = liveMetrics?.eventCount || 8;
+  const activePodCount = liveMetrics?.podCount || clusterTopology.pods.length || 0;
+  const activeServiceCount = liveMetrics?.svcCount || clusterTopology.services.length || 0;
+  const activeEventCount = liveMetrics?.eventCount || 0;
 
   // Compute total costs helper
   const getSum = (arr, key) => arr.reduce((acc, curr) => acc + (curr[key] || 0), 0);
@@ -388,9 +317,22 @@ export default function Stats() {
         </div>
 
         {/* Live indicator badge */}
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-xs font-semibold">
-          <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
-          <span>{liveMetrics ? "CANLI CİHAZ BAĞLANTISI AKTİF" : "SİMÜLASYON VERİ AKIŞI"}</span>
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border ${
+          hasError 
+            ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' 
+            : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+        }`}>
+          {hasError ? (
+            <>
+              <AlertTriangle size={14} className="text-rose-400 animate-pulse" />
+              <span>VERİ ÇEKİLEMEDİ</span>
+            </>
+          ) : (
+            <>
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
+              <span>CANLI CİHAZ BAĞLANTISI AKTİF</span>
+            </>
+          )}
         </div>
       </div>
 
@@ -411,9 +353,17 @@ export default function Stats() {
                 Cihazın anlık CPU kullanım yüzdesi
               </CardDescription>
             </div>
-            <span className="text-2xl font-mono font-bold text-cyan-400 bg-cyan-500/5 border border-cyan-500/10 px-3 py-1 rounded-xl">
-              {currentCpu}%
-            </span>
+            {!hasError && (
+              <span className="text-2xl font-mono font-bold text-cyan-400 bg-cyan-500/5 border border-cyan-500/10 px-3 py-1 rounded-xl">
+                {currentCpu}%
+              </span>
+            )}
+            {hasError && (
+              <span className="text-xs font-semibold text-rose-400 bg-rose-500/5 border border-rose-500/10 px-3 py-1 rounded-xl flex items-center gap-1">
+                <AlertTriangle size={12} />
+                Veri çekilemedi
+              </span>
+            )}
           </CardHeader>
           <CardContent>
             <ChartContainer config={cpuConfig} className="h-48">
@@ -470,9 +420,17 @@ export default function Stats() {
                 Cihazın anlık RAM kullanım yüzdesi ve durumu
               </CardDescription>
             </div>
-            <span className="text-2xl font-mono font-bold text-purple-400 bg-purple-500/5 border border-purple-500/10 px-3 py-1 rounded-xl">
-              {currentRam}%
-            </span>
+            {!hasError && (
+              <span className="text-2xl font-mono font-bold text-purple-400 bg-purple-500/5 border border-purple-500/10 px-3 py-1 rounded-xl">
+                {currentRam}%
+              </span>
+            )}
+            {hasError && (
+              <span className="text-xs font-semibold text-rose-400 bg-rose-500/5 border border-rose-500/10 px-3 py-1 rounded-xl flex items-center gap-1">
+                <AlertTriangle size={12} />
+                Veri çekilemedi
+              </span>
+            )}
           </CardHeader>
           <CardContent>
             <ChartContainer config={ramConfig} className="h-48">
@@ -530,13 +488,19 @@ export default function Stats() {
                 Cihaz arayüzlerindeki veri transfer oranları (Rx: Gelen, Tx: Giden)
               </CardDescription>
             </div>
-            <span className={`text-[10px] font-bold px-3 py-1 rounded-full border ${
-              isBottleneck 
-                ? 'bg-rose-500/10 text-rose-400 border-rose-500/30 animate-pulse' 
-                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-            }`}>
-              {isBottleneck ? 'AĞ YOĞUNLUĞU UYARISI' : 'AĞ BAĞLANTISI NORMAL'}
-            </span>
+            {hasError ? (
+              <span className="text-xs font-bold px-3 py-1 rounded-full border bg-rose-500/10 text-rose-400 border-rose-500/30">
+                VERİ ÇEKİLEMEDİ
+              </span>
+            ) : (
+              <span className={`text-[10px] font-bold px-3 py-1 rounded-full border ${
+                isBottleneck 
+                  ? 'bg-rose-500/10 text-rose-400 border-rose-500/30 animate-pulse' 
+                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+              }`}>
+                {isBottleneck ? 'AĞ YOĞUNLUĞU UYARISI' : 'AĞ BAĞLANTISI NORMAL'}
+              </span>
+            )}
           </CardHeader>
           <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
@@ -586,20 +550,24 @@ export default function Stats() {
                 Algılanan Ağ Darboğaz Olayları
               </span>
               <div className="bg-slate-950/80 border border-slate-900 rounded-xl p-4 min-h-[160px] overflow-y-auto max-h-[220px] font-mono text-[11px] flex flex-col gap-3 divide-y divide-slate-900/60">
-                {bottleneckLogs.map((log) => (
-                  <div key={log.id} className="pt-2.5 first:pt-0 flex flex-col gap-1 justify-between">
-                    <div className="flex justify-between items-center text-[10px] text-slate-500">
-                      <span>[{log.time}]</span>
-                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
-                        log.severity === 'danger' ? 'bg-rose-500/10 text-rose-400' : 'bg-amber-500/10 text-amber-400'
-                      }`}>
-                        {log.severity}
-                      </span>
+                {hasError ? (
+                  <div className="text-rose-400 text-center py-12">Veri çekilemedi</div>
+                ) : (
+                  bottleneckLogs.map((log) => (
+                    <div key={log.id} className="pt-2.5 first:pt-0 flex flex-col gap-1 justify-between">
+                      <div className="flex justify-between items-center text-[10px] text-slate-500">
+                        <span>[{log.time}]</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
+                          log.severity === 'danger' ? 'bg-rose-500/10 text-rose-400' : 'bg-amber-500/10 text-amber-400'
+                        }`}>
+                          {log.severity}
+                        </span>
+                      </div>
+                      <span className="text-slate-200 font-bold">{log.type}</span>
+                      <span className="text-slate-400 leading-relaxed">{log.desc}</span>
                     </div>
-                    <span className="text-slate-200 font-bold">{log.type}</span>
-                    <span className="text-slate-400 leading-relaxed">{log.desc}</span>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </CardContent>
@@ -622,20 +590,28 @@ export default function Stats() {
               </div>
               
               {/* Local Selector */}
-              <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
-                <button 
-                  onClick={() => setElecTimeRange('weekly')} 
-                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${elecTimeRange === 'weekly' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-slate-400'}`}
-                >
-                  Haftalık
-                </button>
-                <button 
-                  onClick={() => setElecTimeRange('monthly')} 
-                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${elecTimeRange === 'monthly' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-slate-400'}`}
-                >
-                  Aylık
-                </button>
-              </div>
+              {!hasError && (
+                <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
+                  <button 
+                    onClick={() => setElecTimeRange('weekly')} 
+                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${elecTimeRange === 'weekly' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-slate-400'}`}
+                  >
+                    Haftalık
+                  </button>
+                  <button 
+                    onClick={() => setElecTimeRange('monthly')} 
+                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${elecTimeRange === 'monthly' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'text-slate-400'}`}
+                  >
+                    Aylık
+                  </button>
+                </div>
+              )}
+              {hasError && (
+                <span className="text-xs font-semibold text-rose-400 bg-rose-500/5 border border-rose-500/10 px-3 py-1 rounded-xl flex items-center gap-1">
+                  <AlertTriangle size={12} />
+                  Veri çekilemedi
+                </span>
+              )}
             </div>
           </CardHeader>
           <CardContent>
@@ -692,8 +668,12 @@ export default function Stats() {
                   Çözücü (Solver) modülü yapay zeka sağlayıcısı kullanım oranları
                 </CardDescription>
               </div>
-
-              {/* Removed Local Selector because AI tokens are cumulative */}
+              {hasError && (
+                <span className="text-xs font-semibold text-rose-400 bg-rose-500/5 border border-rose-500/10 px-3 py-1 rounded-xl flex items-center gap-1">
+                  <AlertTriangle size={12} />
+                  Veri çekilemedi
+                </span>
+              )}
             </div>
           </CardHeader>
           <CardContent className="flex flex-col sm:flex-row justify-around items-center gap-6 pb-2">
@@ -767,20 +747,28 @@ export default function Stats() {
                 </div>
 
                 {/* Local Selector */}
-                <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
-                  <button 
-                    onClick={() => setAwsTimeRange('weekly')} 
-                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${awsTimeRange === 'weekly' ? 'bg-indigo-50/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400'}`}
-                  >
-                    Haftalık
-                  </button>
-                  <button 
-                    onClick={() => setAwsTimeRange('monthly')} 
-                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${awsTimeRange === 'monthly' ? 'bg-indigo-50/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400'}`}
-                  >
-                    Aylık
-                  </button>
-                </div>
+                {!hasError && (
+                  <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
+                    <button 
+                      onClick={() => setAwsTimeRange('weekly')} 
+                      className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${awsTimeRange === 'weekly' ? 'bg-indigo-50/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400'}`}
+                    >
+                      Haftalık
+                    </button>
+                    <button 
+                      onClick={() => setAwsTimeRange('monthly')} 
+                      className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${awsTimeRange === 'monthly' ? 'bg-indigo-50/10 text-indigo-400 border border-indigo-500/20' : 'text-slate-400'}`}
+                    >
+                      Aylık
+                    </button>
+                  </div>
+                )}
+                {hasError && (
+                  <span className="text-xs font-semibold text-rose-400 bg-rose-500/5 border border-rose-500/10 px-3 py-1 rounded-xl flex items-center gap-1">
+                    <AlertTriangle size={12} />
+                    Veri çekilemedi
+                  </span>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -838,20 +826,28 @@ export default function Stats() {
                 </div>
 
                 {/* Local Selector */}
-                <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
-                  <button 
-                    onClick={() => setTfTimeRange('weekly')} 
-                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${tfTimeRange === 'weekly' ? 'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20' : 'text-slate-400'}`}
-                  >
-                    Haftalık
-                  </button>
-                  <button 
-                    onClick={() => setTfTimeRange('monthly')} 
-                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${tfTimeRange === 'monthly' ? 'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20' : 'text-slate-400'}`}
-                  >
-                    Aylık
-                  </button>
-                </div>
+                {!hasError && (
+                  <div className="flex gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg">
+                    <button 
+                      onClick={() => setTfTimeRange('weekly')} 
+                      className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${tfTimeRange === 'weekly' ? 'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20' : 'text-slate-400'}`}
+                    >
+                      Haftalık
+                    </button>
+                    <button 
+                      onClick={() => setTfTimeRange('monthly')} 
+                      className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${tfTimeRange === 'monthly' ? 'bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20' : 'text-slate-400'}`}
+                    >
+                      Aylık
+                    </button>
+                  </div>
+                )}
+                {hasError && (
+                  <span className="text-xs font-semibold text-rose-400 bg-rose-500/5 border border-rose-500/10 px-3 py-1 rounded-xl flex items-center gap-1">
+                    <AlertTriangle size={12} />
+                    Veri çekilemedi
+                  </span>
+                )}
               </div>
             </CardHeader>
             <CardContent className="pb-0">
