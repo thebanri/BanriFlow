@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
+import { cn } from '../lib/utils';
 import { 
   BarChart2, Cpu, Zap, Activity, ShieldAlert, 
   Layers, HardDrive, DollarSign, RefreshCw, ArrowUpRight, 
@@ -8,8 +9,12 @@ import {
 import {
   Area, AreaChart, CartesianGrid, XAxis, YAxis, Bar, BarChart, 
   LabelList, PolarAngleAxis, PolarGrid, Radar, RadarChart, 
-  PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, RadialBar, RadialBarChart
+  Pie, Cell, ResponsiveContainer, RadialBar, RadialBarChart
 } from 'recharts';
+
+import { PieChart } from '../components/charts/pie-chart';
+import { PieSlice } from '../components/charts/pie-slice';
+import { PieCenter } from '../components/charts/pie-center';
 
 import {
   Card,
@@ -48,6 +53,7 @@ export default function Stats() {
   const [aiTimeRange, setAiTimeRange] = useState('weekly');   
   const [tfTimeRange, setTfTimeRange] = useState('weekly');   
   const [elecTimeRange, setElecTimeRange] = useState('weekly'); 
+  const [hoveredIndex, setHoveredIndex] = useState(null);
 
   // --- Real-time Systems Data State ---
   const [cpuHistory, setCpuHistory] = useState(() => generateInitialHistory(15));
@@ -730,29 +736,28 @@ export default function Stats() {
             ) : (
               <>
                 <div className="h-[200px] w-[200px] relative flex justify-center items-center">
-                  <PieChart data={pieData} innerRadius={60} size={200}>
-                    {pieData.map((item, index) => (
-                      <PieSlice index={index} key={item.label} />
-                    ))}
+                  <PieChart
+                    data={pieData}
+                    hoveredIndex={hoveredIndex}
+                    innerRadius={55}
+                    onHoverChange={setHoveredIndex}
+                    size={180}
+                  >
+                    {pieData.map((_, i) => <PieSlice index={i} key={i} />)}
                     <PieCenter defaultLabel="Total" />
                   </PieChart>
                 </div>
 
-                {/* Detail stats legend table */}
-                <div className="flex-1 flex flex-col gap-2.5 w-full">
-                  {activeAiData.map((prov, i) => (
-                    <div key={i} className="p-3 bg-slate-950/70 border border-slate-900/60 rounded-xl flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: prov.fill }}></div>
-                        <span className="text-xs font-semibold text-slate-300">{prov.name}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-xs font-mono font-bold block text-slate-200">{formatTokens(prov.value)} Token</span>
-                        <span className="text-[9px] font-mono text-slate-500">Maliyet: <span className="text-emerald-500 font-bold">${prov.cost.toFixed(2)}</span></span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <Legend
+                  hoveredIndex={hoveredIndex}
+                  items={pieData}
+                  onHoverChange={setHoveredIndex}
+                >
+                  <LegendItemComponent>
+                    <LegendMarker />
+                    <LegendLabel />
+                  </LegendItemComponent>
+                </Legend>
               </>
             )}
 
@@ -932,47 +937,56 @@ export default function Stats() {
   );
 }
 
-// --- Custom clean PieChart subcomponents mapped to Recharts under the hood ---
-const PieContext = React.createContext(null);
+// --- Custom clean Legend subcomponents ---
+const LegendContext = React.createContext(null);
 
-function PieChart({ data, innerRadius, size, children }) {
-  const totalValue = data.reduce((acc, curr) => acc + (curr.value || 0), 0);
-
+function Legend({ hoveredIndex, items, onHoverChange, children }) {
   return (
-    <PieContext.Provider value={{ data, totalValue, size }}>
-      <div className="relative flex justify-center items-center" style={{ width: size, height: size }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <RechartsPieChart>
-            <Pie
-              data={data}
-              cx="50%"
-              cy="50%"
-              innerRadius={innerRadius}
-              outerRadius={size / 2 - 10}
-              paddingAngle={4}
-              dataKey="value"
-            >
-              {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.fill || entry.color || '#ffffff'} />
-              ))}
-            </Pie>
-            <ChartTooltip content={<ChartTooltipContent nameKey="label" />} />
-          </RechartsPieChart>
-        </ResponsiveContainer>
-        {children}
-      </div>
-    </PieContext.Provider>
+    <div className="flex-1 flex flex-col gap-2.5 w-full">
+      {items.map((item, index) => {
+        const isHovered = hoveredIndex === index;
+        const otherHovered = hoveredIndex !== null && hoveredIndex !== index;
+        return (
+          <div 
+            key={index} 
+            onMouseEnter={() => onHoverChange(index)}
+            onMouseLeave={() => onHoverChange(null)}
+            className={cn(
+              "p-3 bg-slate-950/70 border border-slate-900/60 rounded-xl flex items-center justify-between transition-all duration-200 cursor-pointer",
+              isHovered && "scale-[1.02] border-indigo-500/50 shadow-lg shadow-indigo-500/5",
+              otherHovered && "opacity-40"
+            )}
+          >
+            <LegendContext.Provider value={{ item, isHovered }}>
+              {children}
+            </LegendContext.Provider>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
-function PieSlice({ index }) {
-  return null;
+function LegendItemComponent({ children }) {
+  return (
+    <div className="flex items-center justify-between w-full">
+      {children}
+    </div>
+  );
 }
 
-function PieCenter({ defaultLabel }) {
-  const context = React.useContext(PieContext);
-  if (!context) return null;
+function LegendMarker() {
+  const ctx = React.useContext(LegendContext);
+  if (!ctx) return null;
+  return (
+    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ctx.item.color || ctx.item.fill }} />
+  );
+}
 
+function LegendLabel() {
+  const ctx = React.useContext(LegendContext);
+  if (!ctx) return null;
+  
   const formatTokens = (val) => {
     if (val >= 1000000) {
       return `${(val / 1000000).toFixed(2)}M`;
@@ -984,11 +998,12 @@ function PieCenter({ defaultLabel }) {
   };
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-      <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">{defaultLabel}</span>
-      <span className="text-sm font-mono font-bold text-slate-200">
-        {formatTokens(context.totalValue)}
-      </span>
+    <div className="flex justify-between items-center w-full pl-3">
+      <span className="text-xs font-semibold text-slate-300">{ctx.item.label}</span>
+      <div className="text-right">
+        <span className="text-xs font-mono font-bold block text-slate-200">{formatTokens(ctx.item.value)} Token</span>
+        <span className="text-[9px] font-mono text-slate-500">Maliyet: <span className="text-emerald-500 font-bold">${ctx.item.cost.toFixed(2)}</span></span>
+      </div>
     </div>
   );
 }
