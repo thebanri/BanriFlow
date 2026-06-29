@@ -8,7 +8,7 @@ import {
 import {
   Area, AreaChart, CartesianGrid, XAxis, YAxis, Bar, BarChart, 
   LabelList, PolarAngleAxis, PolarGrid, Radar, RadarChart, 
-  PieChart, Pie, Cell, ResponsiveContainer
+  PieChart, Pie, Cell, ResponsiveContainer, RadialBar, RadialBarChart
 } from 'recharts';
 
 import {
@@ -229,6 +229,7 @@ export default function Stats() {
   };
 
   const aiConfig = {
+    value: { label: "Token" },
     openai: { label: "OpenAI", color: "#10b981" },
     gemini: { label: "Gemini", color: "#6366f1" },
     claude: { label: "Claude", color: "#f97316" },
@@ -259,7 +260,16 @@ export default function Stats() {
   }, [liveMetrics]);
 
   const aiData = useMemo(() => {
-    return liveMetrics?.aiWeekly || [];
+    const raw = liveMetrics?.aiWeekly || [];
+    return raw.map(d => {
+      let color = "#ffffff";
+      const name = d.name ? d.name.toLowerCase() : "";
+      if (name.includes("openai")) color = aiConfig.openai.color;
+      else if (name.includes("gemini")) color = aiConfig.gemini.color;
+      else if (name.includes("claude")) color = aiConfig.claude.color;
+      else if (name.includes("groq")) color = aiConfig.groq.color;
+      return { ...d, fill: color };
+    });
   }, [liveMetrics]);
 
   const activeAiData = useMemo(() => {
@@ -615,40 +625,55 @@ export default function Stats() {
             </div>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={electricityConfig} className="h-56">
-              <BarChart
-                accessibilityLayer
-                data={elecTimeRange === 'monthly' ? electricityMonthlyData : electricityWeeklyData}
-                margin={{ top: 20 }}
-              >
-                <CartesianGrid vertical={false} stroke="#1e293b" />
-                <XAxis
-                  dataKey="name"
-                  tickLine={false}
-                  tickMargin={10}
-                  axisLine={false}
-                />
-                <ChartTooltip
-                  cursor={false}
-                  content={<ChartTooltipContent hideLabel />}
-                />
-                <Bar dataKey="kwh" fill="var(--color-kwh)" radius={6}>
-                  <LabelList
-                    position="top"
-                    offset={10}
-                    className="fill-slate-300 font-mono"
-                    fontSize={10}
+            {hasError ? (
+              <div className="h-56 flex items-center justify-center text-rose-400 font-medium">
+                Veri çekilemedi
+              </div>
+            ) : (
+              <ChartContainer config={electricityConfig} className="h-56">
+                <AreaChart
+                  accessibilityLayer
+                  data={elecTimeRange === 'monthly' ? electricityMonthlyData : electricityWeeklyData}
+                  margin={{
+                    left: 12,
+                    right: 12,
+                    top: 10
+                  }}
+                >
+                  <CartesianGrid vertical={false} stroke="#1e293b" />
+                  <XAxis
+                    dataKey="name"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
                   />
-                </Bar>
-              </BarChart>
-            </ChartContainer>
+                  <ChartTooltip
+                    cursor={false}
+                    content={<ChartTooltipContent indicator="line" />}
+                  />
+                  <Area
+                    dataKey="kwh"
+                    type="natural"
+                    fill="var(--color-kwh)"
+                    fillOpacity={0.4}
+                    stroke="var(--color-kwh)"
+                    strokeWidth={2}
+                  />
+                </AreaChart>
+              </ChartContainer>
+            )}
           </CardContent>
           <CardFooter className="flex-col items-start gap-2 text-xs text-slate-400">
-            <div className="flex gap-2 items-center leading-none font-medium text-slate-200">
-              <TrendingUp className="h-4 w-4 text-emerald-400" /> Aktif Küme Pod Sayısı: {activePodCount} (Tüketim ağırlığı dinamiktir)
-            </div>
-            <div className="text-slate-500">
-              Tahmini Maliyet: <span className="text-emerald-400 font-bold font-mono">${getSum(elecTimeRange === 'monthly' ? electricityMonthlyData : electricityWeeklyData, 'cost').toFixed(4)}</span>
+            <div className="flex w-full items-start gap-2">
+              <div className="grid gap-1.5 w-full">
+                <div className="flex items-center gap-2 leading-none font-medium text-slate-200">
+                  <TrendingUp className="h-4 w-4 text-emerald-400" />
+                  <span>Aktif Küme Pod Sayısı: <b>{activePodCount}</b> (Tüketim ağırlığı dinamiktir)</span>
+                </div>
+                <div className="text-slate-500 flex items-center gap-2 leading-none">
+                  Tahmini Maliyet: <span className="text-emerald-400 font-bold font-mono">${getSum(elecTimeRange === 'monthly' ? electricityMonthlyData : electricityWeeklyData, 'cost').toFixed(4)}</span>
+                </div>
+              </div>
             </div>
           </CardFooter>
         </Card>
@@ -678,54 +703,68 @@ export default function Stats() {
           </CardHeader>
           <CardContent className="flex flex-col sm:flex-row justify-around items-center gap-6 pb-2">
             
-            {/* Donut Chart */}
-            <div className="h-48 w-48 relative flex justify-center items-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={activeAiData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={75}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {activeAiData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <ChartTooltip content={<ChartTooltipContent nameKey="name" />} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Toplam</span>
-                <span className="text-sm font-mono font-bold text-slate-200">
-                  {formatTokens(getSum(activeAiData, 'value'))}
-                </span>
+            {/* Radial Bar Chart */}
+            {hasError ? (
+              <div className="h-48 flex items-center justify-center text-rose-400 font-medium w-full">
+                Veri çekilemedi
               </div>
-            </div>
-
-            {/* Detail stats legend table */}
-            <div className="flex-1 flex flex-col gap-2.5 w-full">
-              {activeAiData.map((prov, i) => (
-                <div key={i} className="p-3 bg-slate-950/70 border border-slate-900/60 rounded-xl flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: prov.fill }}></div>
-                    <span className="text-xs font-semibold text-slate-300">{prov.name}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-xs font-mono font-bold block text-slate-200">{formatTokens(prov.value)} Token</span>
-                    <span className="text-[9px] font-mono text-slate-500">Maliyet: <span className="text-emerald-500 font-bold">${prov.cost.toFixed(2)}</span></span>
+            ) : (
+              <>
+                <div className="h-48 w-48 relative flex justify-center items-center">
+                  <ChartContainer
+                    config={aiConfig}
+                    className="mx-auto aspect-square w-full h-full"
+                  >
+                    <RadialBarChart 
+                      data={activeAiData} 
+                      innerRadius={30} 
+                      outerRadius={90}
+                    >
+                      <ChartTooltip
+                        cursor={false}
+                        content={<ChartTooltipContent hideLabel nameKey="name" />}
+                      />
+                      <RadialBar dataKey="value" background />
+                    </RadialBarChart>
+                  </ChartContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-[9px] text-slate-500 uppercase tracking-widest font-semibold">Toplam</span>
+                    <span className="text-xs font-mono font-bold text-slate-200">
+                      {formatTokens(getSum(activeAiData, 'value'))}
+                    </span>
                   </div>
                 </div>
-              ))}
-            </div>
+
+                {/* Detail stats legend table */}
+                <div className="flex-1 flex flex-col gap-2.5 w-full">
+                  {activeAiData.map((prov, i) => (
+                    <div key={i} className="p-3 bg-slate-950/70 border border-slate-900/60 rounded-xl flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: prov.fill }}></div>
+                        <span className="text-xs font-semibold text-slate-300">{prov.name}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs font-mono font-bold block text-slate-200">{formatTokens(prov.value)} Token</span>
+                        <span className="text-[9px] font-mono text-slate-500">Maliyet: <span className="text-emerald-500 font-bold">${prov.cost.toFixed(2)}</span></span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
 
           </CardContent>
-          <CardFooter className="text-xs text-slate-400 justify-between">
-            <span>Yapay Zeka Müdahale Sayısı: <b>{activeEventCount}</b></span>
-            <span className="text-emerald-500 font-bold font-mono">Toplam Yapay Zeka Gideri: ${getSum(activeAiData, 'cost').toFixed(2)}</span>
+          <CardFooter className="flex-col items-start gap-2 text-xs text-slate-400">
+            <div className="flex w-full items-start gap-2">
+              <div className="grid gap-1.5 w-full">
+                <div className="flex items-center gap-2 leading-none font-medium text-slate-200">
+                  <span>Yapay Zeka Müdahale Sayısı: <b>{activeEventCount}</b></span>
+                </div>
+                <div className="text-slate-500 flex items-center gap-2 leading-none">
+                  Toplam Yapay Zeka Gideri: <span className="text-emerald-500 font-bold font-mono">${getSum(activeAiData, 'cost').toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
           </CardFooter>
         </Card>
 
