@@ -744,7 +744,18 @@ export default function Stats() {
                     size={180}
                   >
                     {pieData.map((_, i) => <PieSlice index={i} key={i} />)}
-                    <PieCenter defaultLabel="Total" />
+                    <PieCenter defaultLabel="Total">
+                      {({ value, label }) => (
+                        <>
+                          <span className="text-xl font-mono font-bold text-slate-200">
+                            {formatTokens(value)}
+                          </span>
+                          <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold mt-0.5">
+                            {label}
+                          </span>
+                        </>
+                      )}
+                    </PieCenter>
                   </PieChart>
                 </div>
 

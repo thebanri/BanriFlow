@@ -47,21 +47,21 @@ export function PieCenter({
   }
 
   // If custom render function is provided, use it
-  if (children && hoveredData) {
+  if (children) {
     return (
       <div
         className={cn(
           chartCenterContainerClassName,
-          "flex items-center justify-center",
+          "flex items-center justify-center flex-col text-center",
           className
         )}
         style={{ width: centerSize, height: centerSize }}>
-        {children({
+        {typeof children === "function" ? children({
           value: displayValue,
           label: displayLabel,
           isHovered: effectiveHoveredIndex !== null,
           data: hoveredData,
-        })}
+        }) : children}
       </div>
     );
   }
