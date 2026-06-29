@@ -660,8 +660,8 @@ export default function Stats() {
                   accessibilityLayer
                   data={elecTimeRange === 'monthly' ? electricityMonthlyData : electricityWeeklyData}
                   margin={{
-                    left: 12,
-                    right: 12,
+                    left: 20,
+                    right: 20,
                     top: 10
                   }}
                 >
@@ -671,6 +671,7 @@ export default function Stats() {
                     tickLine={false}
                     axisLine={false}
                     tickMargin={8}
+                    padding={{ left: 16, right: 16 }}
                   />
                   <ChartTooltip
                     cursor={false}
