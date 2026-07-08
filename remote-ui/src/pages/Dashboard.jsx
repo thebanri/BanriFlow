@@ -9,6 +9,7 @@ function Dashboard() {
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
   const [selectedNode, setSelectedNode] = useState(null);
   const [logs, setLogs] = useState([]);
+  const [aiRecommendations, setAiRecommendations] = useState([]);
   const [solveData, setSolveData] = useState(null);
 
   useEffect(() => {
@@ -49,6 +50,11 @@ function Dashboard() {
             time: new Date(ev.timestamp).toLocaleTimeString('tr-TR', { hour12: false }),
             text: ev.text
           }));
+          
+          // Extract AI recommendations
+          const aiRecs = historicalLogs.filter(log => log.text.includes('[AI-Ops]'));
+          setAiRecommendations(aiRecs);
+          
           setLogs(historicalLogs.slice(-100)); // Load up to last 100 historical logs
         }
       })
@@ -58,6 +64,13 @@ function Dashboard() {
     const eventSource = new EventSource(`http://${window.location.hostname}:3005/api/events`);
     
     eventSource.onmessage = (e) => {
+      const isAI = e.data.includes('[AI-Ops]');
+      if (isAI) {
+        setAiRecommendations(prev => {
+          if (prev.some(r => r.text === e.data)) return prev;
+          return [...prev, { id: Date.now() + Math.random(), time: new Date().toLocaleTimeString('tr-TR', { hour12: false }), text: e.data }];
+        });
+      }
       setLogs(prev => {
         const newLogs = [...prev, { id: Date.now() + Math.random(), time: new Date().toLocaleTimeString('tr-TR', { hour12: false }), text: e.data }];
         // Keep only last 100 logs to prevent memory leak
@@ -96,7 +109,11 @@ function Dashboard() {
 
       {/* Bottom Log Terminal */}
       <div className="absolute bottom-6 left-6 right-6 z-10">
-        <LogTerminal logs={logs} onSolve={(ns, pod, err) => setSolveData({ ns, pod, err })} />
+        <LogTerminal 
+          logs={logs} 
+          aiRecommendations={aiRecommendations}
+          onSolve={(ns, pod, err) => setSolveData({ ns, pod, err })} 
+        />
       </div>
     </>
   );
