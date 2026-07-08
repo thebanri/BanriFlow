@@ -98,6 +98,33 @@ chmod 600 ~/.kube/config
 ```
 Then restart `banri serve`.
 
+## 📸 Dashboard & GUI Walkthrough
+
+Here is a visual walkthrough of the BanriFlow Dashboard:
+
+### 1. 3D Topology Graph
+Visualizes your cluster topology dynamically, showing namespaces, service-pod bindings, and node statuses:
+![Namespace: test-realworld Topology](assets/topology_realworld.png)
+*Figure 1: `test-realworld` namespace with running, warning, and crashed pods.*
+
+![Namespace: kube-system Topology](assets/topology_kubesystem.png)
+*Figure 2: `kube-system` core network connections showing CoreDNS pods linked with DNS services.*
+
+### 2. Live Performance Metrics
+Monitors CPU, Memory, and Network Bandwidth in real-time, detecting potential network bottlenecks and resource shortages:
+![System Metrics](assets/system_metrics.png)
+*Figure 3: Real-time charts showing CPU & RAM metrics alongside incoming/outgoing Network bandwidth.*
+
+### 3. Detailed Pod Inspector
+Clicking on any node in the topology graph opens a sidebar inspect panel with status diagnostics, resource limits, and the latest events:
+![Pod Details Sidebar](assets/pod_details_sidebar.png)
+*Figure 4: Pod inspector sidebar for a crashed node application showing high restart counts and recent container events.*
+
+### 4. AI-Powered Auto-Repair Stream
+Apply automated resolutions directly from the dashboard. The AI Assistant determines the fix, drafts a patch, executes it, and verifies the pod state:
+![AI Assistant Solver](assets/ai_assistant_solve.png)
+*Figure 5: The DevSecOps Copilot panel executing self-healing actions, applying environmental fixes, and confirming status.*
+
 ## 🧠 Behind the Scenes: SOTA LLM Optimization
 BanriFlow is built with state-of-the-art prompt engineering and API optimizations to guarantee zero hallucination:
 - **Chain of Thought (CoT):** Enforces a hidden `thought_process` mechanism, forcing the AI to reason logically before returning results.
